@@ -25,33 +25,25 @@ import { api } from '../api';
 
 
 const DocumentVault = ({ user }) => {
+  // --- State and hooks ---
   const [documents, setDocuments] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [stats, setStats] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('documents');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('documents');
-  
-  const fileInputRef = useRef(null);
-
-  // Document types for form
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const documentTypes = [
-    { value: 'pan_card', label: 'PAN Card', icon: '🏦' },
-    { value: 'aadhaar', label: 'Aadhaar Card', icon: '🆔' },
-    { value: 'passport', label: 'Passport', icon: '🛂' },
-    { value: 'driving_license', label: 'Driving License', icon: '🚗' },
-    { value: 'insurance_policy', label: 'Insurance Policy', icon: '🛡️' },
-    { value: 'loan_agreement', label: 'Loan Agreement', icon: '💰' },
-    { value: 'property_papers', label: 'Property Papers', icon: '🏠' },
-    { value: 'bank_statements', label: 'Bank Statements', icon: '🏪' },
-    { value: 'tax_documents', label: 'Tax Documents', icon: '📋' },
-    { value: 'investment_documents', label: 'Investment Documents', icon: '📈' },
-    { value: 'medical_records', label: 'Medical Records', icon: '🏥' },
-    { value: 'other', label: 'Other', icon: '📄' }
+    { value: 'other', label: 'Other', icon: '📄' },
+    { value: 'tax', label: 'Tax', icon: '🧾' },
+    { value: 'id', label: 'ID', icon: '🪪' },
+    { value: 'insurance', label: 'Insurance', icon: '📑' },
+    { value: 'property', label: 'Property', icon: '🏠' },
+    { value: 'bank', label: 'Bank', icon: '🏦' },
+    { value: 'investment', label: 'Investment', icon: '💹' },
   ];
 
   useEffect(() => {
@@ -236,324 +228,7 @@ const DocumentVault = ({ user }) => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between"
-          >
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <ShieldCheckIcon className="h-8 w-8 text-blue-600 mr-3" />
-                Secure Document Vault
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Your encrypted financial document repository with AI-powered insights
-              </p>
-            </div>
-            <Button
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center"
-              disabled={uploading}
-            >
-              {uploading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <CloudArrowUpIcon className="h-5 w-5 mr-2" />
-                  Upload Document
-                </>
-              )}
-            </Button>
-          </motion.div>
-        </div>
-
-        {/* Statistics Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
-        >
-          <StatCard
-            title="Total Documents"
-            value={stats.document_counts?.total || 0}
-            icon={DocumentTextIcon}
-            color="blue"
-            subtitle={`${formatFileSize(stats.storage?.total_size_bytes || 0)} used`}
-          />
-          <StatCard
-            title="Expired Documents"
-            value={stats.document_counts?.expired || 0}
-            icon={ExclamationTriangleIcon}
-            color="red"
-            subtitle="Require immediate attention"
-          />
-          <StatCard
-            title="Expiring Soon"
-            value={stats.document_counts?.expiring_soon || 0}
-            icon={CalendarIcon}
-            color="yellow"
-            subtitle="Within 30 days"
-          />
-          <StatCard
-            title="Active Reminders"
-            value={stats.reminders?.active || 0}
-            icon={BellIcon}
-            color="green"
-            subtitle="Upcoming notifications"
-          />
-        </motion.div>
-
-        {/* Tabs */}
-        <div className="mb-6">
-          <nav className="flex space-x-8">
-            {[
-              { key: 'documents', label: 'Documents', icon: FolderIcon },
-              { key: 'reminders', label: 'Reminders', icon: BellIcon },
-              { key: 'insights', label: 'Insights', icon: ChartBarIcon }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                  activeTab === tab.key
-                    ? 'text-blue-600 bg-blue-50'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <tab.icon className="h-4 w-4 mr-2" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Tab Content */}
-        <AnimatePresence mode="wait">
-          {activeTab === 'documents' && (
-            <motion.div
-              key="documents"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              {/* Search and Filter */}
-              <GlassPanel className="p-4 mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1 relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      type="text"
-                      placeholder="Search documents..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <div className="flex items-center">
-                    <FunnelIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <select
-                      value={filterType}
-                      onChange={(e) => setFilterType(e.target.value)}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="all">All Types</option>
-                      {documentTypes.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </GlassPanel>
-
-              {/* Documents Grid */}
-              {filteredDocuments.length === 0 ? (
-                <GlassPanel className="p-12 text-center">
-                  <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No documents found</h3>
-                  <p className="text-gray-500 mb-4">
-                    {searchQuery || filterType !== 'all' 
-                      ? 'Try adjusting your search or filter criteria'
-                      : 'Upload your first document to get started'
-                    }
-                  </p>
-                  {!searchQuery && filterType === 'all' && (
-                    <Button onClick={() => setShowUploadModal(true)}>
-                      <CloudArrowUpIcon className="h-4 w-4 mr-2" />
-                      Upload Document
-                    </Button>
-                  )}
-                </GlassPanel>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredDocuments.map((document) => (
-                    <motion.div
-                      key={document.id}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      whileHover={{ scale: 1.02 }}
-                      className="group"
-                    >
-                      <GlassPanel className="p-6 cursor-pointer transition-all hover:shadow-lg">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center">
-                            <span className="text-2xl mr-3">
-                              {getDocumentIcon(document.document_type)}
-                            </span>
-                            <div>
-                              <h3 className="font-semibold text-gray-900 line-clamp-1">
-                                {document.title}
-                              </h3>
-                              <p className="text-sm text-gray-500">
-                                {document.document_type.replace('_', ' ').toUpperCase()}
-                              </p>
-                            </div>
-                          </div>
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(document.status)}`}>
-                            {document.status.replace('_', ' ')}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 text-sm text-gray-600 mb-4">
-                          <div className="flex justify-between">
-                            <span>Size:</span>
-                            <span>{formatFileSize(document.file_size)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Created:</span>
-                            <span>{formatDate(document.created_at)}</span>
-                          </div>
-                          {document.expiry_date && (
-                            <div className="flex justify-between">
-                              <span>Expires:</span>
-                              <span className={
-                                new Date(document.expiry_date) < new Date() 
-                                  ? 'text-red-600 font-medium' 
-                                  : ''
-                              }>
-                                {formatDate(document.expiry_date)}
-                              </span>
-                            </div>
-                          )}
-                          {document.access_count > 0 && (
-                            <div className="flex justify-between">
-                              <span>Accessed:</span>
-                              <span>{document.access_count} times</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Tags */}
-                        {document.tags && document.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-4">
-                            {document.tags.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-600"
-                              >
-                                <TagIcon className="h-3 w-3 mr-1" />
-                                {tag}
-                              </span>
-                            ))}
-                            {document.tags.length > 3 && (
-                              <span className="text-xs text-gray-500">
-                                +{document.tags.length - 3} more
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Action Buttons */}
-                        <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleDocumentView(document)}
-                            className="flex-1 flex items-center justify-center px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors"
-                          >
-                            <EyeIcon className="h-4 w-4 mr-1" />
-                            View
-                          </button>
-                          <button
-                            onClick={() => handleDocumentDownload(document)}
-                            className="flex-1 flex items-center justify-center px-3 py-2 text-sm bg-green-50 text-green-600 rounded-md hover:bg-green-100 transition-colors"
-                          >
-                            <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
-                            Download
-                          </button>
-                          <button
-                            onClick={() => handleDocumentDelete(document)}
-                            className="flex items-center justify-center px-3 py-2 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </GlassPanel>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === 'reminders' && (
-            <motion.div
-              key="reminders"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <RemindersDashboard 
-                reminders={reminders} 
-                user={user} 
-                onReminderUpdate={loadReminders}
-              />
-            </motion.div>
-          )}
-
-          {activeTab === 'insights' && (
-            <motion.div
-              key="insights"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <InsightsDashboard stats={stats} documents={documents} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Upload Modal */}
-        <AnimatePresence>
-          {showUploadModal && (
-            <UploadModal
-              user={user}
-              onClose={() => setShowUploadModal(false)}
-              onUploadSuccess={() => {
-                loadDocuments();
-                loadStats();
-                setShowUploadModal(false);
-              }}
-              documentTypes={documentTypes}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Document Details Modal */}
-        <AnimatePresence>
-          {selectedDocument && (
-            <DocumentDetailsModal
-              document={selectedDocument}
-              user={user}
-              onClose={() => setSelectedDocument(null)}
-              onDelete={handleDocumentDelete}
-              onDownload={handleDocumentDownload}
-            />
-          )}
-        </AnimatePresence>
+        {/* ...existing code for header, statistics, tabs, tab content, modals... */}
       </div>
     </div>
   );
@@ -1143,26 +818,5 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
   );
 };
 
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  return new Date(dateString).toLocaleDateString('en-IN');
-};
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'active': return 'text-green-600 bg-green-50';
-    case 'expired': return 'text-red-600 bg-red-50';
-    case 'expiring_soon': return 'text-yellow-600 bg-yellow-50';
-    default: return 'text-gray-600 bg-gray-50';
-  }
-};
 
 export default DocumentVault;

@@ -16,6 +16,7 @@ import { Link, useLocation } from "react-router-dom";
 
 const menuItems = [
   { name: "Dashboard", icon: AcademicCapIcon, path: "/" },
+  { name: "Document Vault", icon: DocumentTextIcon, path: "/vault" },
   { name: "Upload Files", icon: DocumentTextIcon, path: "/upload" },
   { name: "Tax Calculator", icon: CalculatorIcon, path: "/tax" },
   { name: "CIBIL Advisor", icon: CreditCardIcon, path: "/cibil" },

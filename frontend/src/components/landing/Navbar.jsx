@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { BarChart3, Menu, X, User, LogOut, ChevronRight } from 'lucide-react';
 
-const Navbar = () => {
+const 
+Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
