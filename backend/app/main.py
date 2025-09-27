@@ -169,7 +169,7 @@ async def generate_tax_report_api(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -595,6 +595,32 @@ async def health_check():
 async def read_user_profile(current_user: dict = Depends(get_current_user)):
     # Example: Fetch user-specific data using current_user["id"]
     return {"message": "Authenticated!", "user_id": current_user["id"]}
+
+from app.services.capital_gains_service import CapitalGainsService
+from fastapi import APIRouter, UploadFile, File, Form
+
+capital_gains_service = CapitalGainsService()
+capital_gains_router = APIRouter()
+user_gains = {}
+
+@capital_gains_router.post('/capital_gains/ingest')
+async def ingest_gains(user_id: str = Form(...), file: UploadFile = File(...)):
+    content = await file.read()
+    gains = capital_gains_service.ingest(user_id, content, file.filename)
+    user_gains[user_id] = gains
+    return {'success': True, 'count': len(gains)}
+
+@capital_gains_router.get('/capital_gains/list')
+async def list_gains(user_id: str):
+    gains = user_gains.get(user_id, [])
+    return {'gains': [vars(g) for g in gains]}
+
+@capital_gains_router.post('/capital_gains/analyze')
+async def analyze_gains(user_id: str = Form(...)):
+    result = capital_gains_service.analyze(user_id)
+    return result
+
+app.include_router(capital_gains_router)
 
 if __name__ == "__main__":
     import uvicorn

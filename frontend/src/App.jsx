@@ -10,6 +10,9 @@ import FileUpload from './pages/FileUpload';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import DebtDashboard from './pages/DebtDashboard';
+import CapitalGainsAnalyzer from './pages/CapitalGainsAnalyzer.jsx';
+import HelpSupport from './pages/HelpSupport.jsx';
+import Landing from './pages/Landing';
 
 // Import components
 import Navbar from './components/Navbar';
@@ -48,9 +51,11 @@ function App() {
     return (
       <Router>
         <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/landing" element={<Landing />} />
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register onLogin={handleLogin} />} />
-          <Route path="*" element={<Navigate to="/login" />} />
+          <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>
     );
@@ -87,6 +92,9 @@ function App() {
                 <Route path="/tax" element={<TaxCalculator user={user} />} />
                 <Route path="/cibil" element={<CIBILAdvisor user={user} />} />
                 <Route path="/debt" element={<DebtDashboard user={user} />} />
+                <Route path="/capital-gains" element={<CapitalGainsAnalyzer user={user} />} />
+                <Route path="/help" element={<HelpSupport />} />
+                <Route path="/landing" element={<Landing />} />
                 <Route path="*" element={<Navigate to="/dashboard" />} />
               </Routes>
             </main>

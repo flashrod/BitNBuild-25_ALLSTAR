@@ -1,120 +1,68 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React from "react";
 import {
-  HomeIcon,
-  CalculatorIcon,
-  CreditCardIcon,
-  CloudArrowUpIcon,
   ChartBarIcon,
   DocumentTextIcon,
+  CalculatorIcon,
+  CreditCardIcon,
+  BanknotesIcon,
+  ShieldCheckIcon,
+  UserCircleIcon,
   QuestionMarkCircleIcon,
-} from '@heroicons/react/24/outline';
-import { motion } from 'framer-motion';
+  ArrowRightCircleIcon,
+  StarIcon,
+  AcademicCapIcon,
+} from "@heroicons/react/24/outline";
+import { Link, useLocation } from "react-router-dom";
+
+const menuItems = [
+  { name: "Dashboard", icon: AcademicCapIcon, path: "/" },
+  { name: "Upload Files", icon: DocumentTextIcon, path: "/upload" },
+  { name: "Tax Calculator", icon: CalculatorIcon, path: "/tax" },
+  { name: "CIBIL Advisor", icon: CreditCardIcon, path: "/cibil" },
+  { name: "Debt Simulator", icon: BanknotesIcon, path: "/debt" },
+  { name: "Capital Gains Analyzer", icon: BanknotesIcon, path: "/capital-gains" },
+  { name: "Reports", icon: ShieldCheckIcon, path: "/reports" },
+  { name: "Analytics", icon: ChartBarIcon, path: "/analytics" },
+  { name: "Help & Support", icon: QuestionMarkCircleIcon, path: "/help" },
+];
 
 const Sidebar = () => {
-  const menuItems = [
-    { path: '/dashboard', name: 'Dashboard', icon: HomeIcon },
-    { path: '/upload', name: 'Upload Files', icon: CloudArrowUpIcon },
-    { path: '/tax', name: 'Tax Calculator', icon: CalculatorIcon },
-    { path: '/cibil', name: 'CIBIL Advisor', icon: CreditCardIcon },
-    { path: '/debt', name: 'Debt Simulator', icon: ChartBarIcon },
-  ];
-
-  const secondaryItems = [
-    { path: '/reports', name: 'Reports', icon: DocumentTextIcon },
-    { path: '/analytics', name: 'Analytics', icon: ChartBarIcon },
-    { path: '/help', name: 'Help & Support', icon: QuestionMarkCircleIcon },
-  ];
+  const location = useLocation();
 
   return (
-    <div className="h-full bg-white border-r border-gray-100">
-      <div className="flex flex-col h-full">
-        {/* Main Navigation */}
-        <div className="flex-1 py-4">
-          <nav className="px-4 space-y-1">
-            {menuItems.map((item, index) => (
-              <motion.div
-                key={item.path}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <NavLink
+    <aside className="h-screen w-64 bg-white border-r border-gray-100 flex flex-col justify-between">
+      <div>
+        {/* Sidebar header removed for minimal look, branding only in navbar */}
+        <nav className="mt-4">
+          <ul className="space-y-1">
+            {menuItems.map((item) => (
+              <li key={item.name}>
+                <Link
                   to={item.path}
-                  className={({ isActive }) =>
-                    `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                      isActive
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`
-                  }
+                  className={`flex items-center px-6 py-3 rounded-lg transition-colors ${
+                    location.pathname === item.path
+                      ? "bg-indigo-50 text-indigo-700 font-semibold"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
                 >
-                  {({ isActive }) => (
-                    <>
-                      <item.icon className={`w-5 h-5 ${isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                      <span className="font-medium">{item.name}</span>
-                      {isActive && (
-                        <motion.div
-                          layoutId="activeIndicator"
-                          className="ml-auto w-1 h-4 bg-primary-600 rounded-full"
-                        />
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              </motion.div>
+                  <item.icon className="w-5 h-5 mr-3" />
+                  {item.name}
+                </Link>
+              </li>
             ))}
-          </nav>
-
-          {/* Divider */}
-          <div className="mx-4 my-6 border-t border-gray-100"></div>
-
-          {/* Secondary Navigation */}
-          <nav className="px-4 space-y-1">
-            {secondaryItems.map((item, index) => (
-              <motion.div
-                key={item.path}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: (menuItems.length + index) * 0.1 }}
-              >
-                <NavLink
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                      isActive
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`
-                  }
-                >
-                  <item.icon className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
-                  <span className="font-medium">{item.name}</span>
-                </NavLink>
-              </motion.div>
-            ))}
-          </nav>
-        </div>
-
-        {/* Premium Badge */}
-        <div className="p-4">
-          <div className="bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl p-4 text-white">
-            <div className="flex items-center space-x-2 mb-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              <span className="font-semibold">Pro Features</span>
-            </div>
-            <p className="text-xs text-primary-100 mb-3">
-              Unlock advanced tax optimization and AI insights
-            </p>
-            <button className="w-full bg-white text-primary-700 text-sm font-medium py-2 rounded-lg hover:bg-primary-50 transition-colors">
-              Upgrade Now
-            </button>
-          </div>
-        </div>
+          </ul>
+        </nav>
       </div>
-    </div>
+      <div className="px-6 py-6">
+        <Link
+          to="/upgrade"
+          className="flex items-center justify-between bg-indigo-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+        >
+          <span>Pro Features</span>
+          <ArrowRightCircleIcon className="w-5 h-5 ml-2" />
+        </Link>
+      </div>
+    </aside>
   );
 };
 
