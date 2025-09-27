@@ -13,6 +13,7 @@ import DebtDashboard from './pages/DebtDashboard';
 import CapitalGainsAnalyzer from './pages/CapitalGainsAnalyzer.jsx';
 import HelpSupport from './pages/HelpSupport.jsx';
 import Landing from './pages/Landing';
+import DocumentVault from './pages/DocumentVault';
 
 // Import components
 import Navbar from './components/Navbar';
@@ -95,6 +96,7 @@ function App() {
                 <Route path="/capital-gains" element={<CapitalGainsAnalyzer user={user} />} />
                 <Route path="/help" element={<HelpSupport />} />
                 <Route path="/landing" element={<Landing />} />
+                <Route path="/vault" element={<DocumentVault user={user} />} />
                 <Route path="*" element={<Navigate to="/dashboard" />} />
               </Routes>
             </main>
