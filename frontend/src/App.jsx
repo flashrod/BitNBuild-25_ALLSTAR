@@ -10,6 +10,7 @@ import FileUpload from './pages/FileUpload';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import DebtDashboard from './pages/DebtDashboard';
+import DocumentVault from './pages/DocumentVault';
 
 // Import components
 import Navbar from './components/Navbar';
@@ -87,6 +88,7 @@ function App() {
                 <Route path="/tax" element={<TaxCalculator user={user} />} />
                 <Route path="/cibil" element={<CIBILAdvisor user={user} />} />
                 <Route path="/debt" element={<DebtDashboard user={user} />} />
+                <Route path="/vault" element={<DocumentVault user={user} />} />
                 <Route path="*" element={<Navigate to="/dashboard" />} />
               </Routes>
             </main>

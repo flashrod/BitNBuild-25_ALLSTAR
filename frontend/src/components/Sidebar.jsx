@@ -8,12 +8,14 @@ import {
   ChartBarIcon,
   DocumentTextIcon,
   QuestionMarkCircleIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 
 const Sidebar = () => {
   const menuItems = [
     { path: '/dashboard', name: 'Dashboard', icon: HomeIcon },
+    { path: '/vault', name: 'Document Vault', icon: ShieldCheckIcon },
     { path: '/upload', name: 'Upload Files', icon: CloudArrowUpIcon },
     { path: '/tax', name: 'Tax Calculator', icon: CalculatorIcon },
     { path: '/cibil', name: 'CIBIL Advisor', icon: CreditCardIcon },

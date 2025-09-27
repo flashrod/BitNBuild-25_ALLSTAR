@@ -149,3 +149,200 @@ class CIBILRecommendation(BaseModel):
     recommendation: str
     expected_score_improvement: int
     timeframe_months: int
+
+# Document Vault Models
+class DocumentType(str, Enum):
+    PAN_CARD = "pan_card"
+    AADHAAR = "aadhaar"
+    PASSPORT = "passport"
+    DRIVING_LICENSE = "driving_license"
+    VOTER_ID = "voter_id"
+    INSURANCE_POLICY = "insurance_policy"
+    HEALTH_INSURANCE = "health_insurance"
+    LIFE_INSURANCE = "life_insurance"
+    VEHICLE_INSURANCE = "vehicle_insurance"
+    LOAN_AGREEMENT = "loan_agreement"
+    HOME_LOAN = "home_loan"
+    PERSONAL_LOAN = "personal_loan"
+    EDUCATION_LOAN = "education_loan"
+    VEHICLE_LOAN = "vehicle_loan"
+    PROPERTY_PAPERS = "property_papers"
+    SALE_DEED = "sale_deed"
+    RENT_AGREEMENT = "rent_agreement"
+    BANK_STATEMENTS = "bank_statements"
+    TAX_DOCUMENTS = "tax_documents"
+    ITR = "itr"
+    FORM_16 = "form_16"
+    TDS_CERTIFICATE = "tds_certificate"
+    INVESTMENT_DOCUMENTS = "investment_documents"
+    MUTUAL_FUND = "mutual_fund"
+    STOCK_CERTIFICATE = "stock_certificate"
+    FD_RECEIPT = "fd_receipt"
+    PPF_PASSBOOK = "ppf_passbook"
+    EPF_STATEMENT = "epf_statement"
+    SALARY_SLIPS = "salary_slips"
+    MEDICAL_RECORDS = "medical_records"
+    EDUCATION_CERTIFICATES = "education_certificates"
+    OTHER = "other"
+
+class DocumentStatus(str, Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    EXPIRING_SOON = "expiring_soon"
+    PENDING_RENEWAL = "pending_renewal"
+    ARCHIVED = "archived"
+
+class ReminderType(str, Enum):
+    DOCUMENT_EXPIRY = "document_expiry"
+    POLICY_RENEWAL = "policy_renewal"
+    EMI_DUE = "emi_due"
+    PREMIUM_DUE = "premium_due"
+    TAX_FILING = "tax_filing"
+    INVESTMENT_MATURITY = "investment_maturity"
+    CUSTOM = "custom"
+
+class ReminderFrequency(str, Enum):
+    ONCE = "once"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    YEARLY = "yearly"
+
+class Document(BaseModel):
+    id: Optional[str] = None
+    user_id: str
+    title: str
+    document_type: DocumentType
+    file_name: str
+    file_size: int
+    file_type: str  # MIME type
+    
+    # Document metadata
+    document_number: Optional[str] = None  # e.g., PAN number, Aadhaar number
+    issue_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    issuing_authority: Optional[str] = None
+    
+    # Status and categorization
+    status: DocumentStatus = DocumentStatus.ACTIVE
+    tags: List[str] = []
+    description: Optional[str] = None
+    
+    # Security and encryption
+    is_encrypted: bool = True
+    encryption_key_id: Optional[str] = None
+    file_hash: Optional[str] = None  # For integrity verification
+    
+    # Storage information
+    storage_path: str
+    backup_path: Optional[str] = None
+    
+    # AI extraction data
+    extracted_text: Optional[str] = None
+    extracted_data: Optional[Dict[str, Any]] = {}  # Structured data from OCR/AI
+    
+    # Audit fields
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    accessed_at: Optional[datetime] = None
+    access_count: int = 0
+
+class DocumentReminder(BaseModel):
+    id: Optional[str] = None
+    user_id: str
+    document_id: Optional[str] = None  # Can be null for custom reminders
+    
+    title: str
+    description: Optional[str] = None
+    reminder_type: ReminderType
+    
+    # Timing
+    reminder_date: datetime
+    frequency: ReminderFrequency = ReminderFrequency.ONCE
+    
+    # Advance notification settings
+    advance_days: List[int] = [30, 15, 7, 1]  # Days before to send reminders
+    
+    # Status
+    is_active: bool = True
+    is_completed: bool = False
+    
+    # AI-generated insights
+    ai_priority_score: Optional[int] = None  # 1-10 priority score
+    ai_suggested_actions: List[str] = []
+    
+    # Notification history
+    last_notified: Optional[datetime] = None
+    notification_count: int = 0
+    
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class DocumentShare(BaseModel):
+    id: Optional[str] = None
+    document_id: str
+    shared_by_user_id: str
+    
+    # Sharing options
+    share_token: str
+    expires_at: datetime
+    password_protected: bool = False
+    download_allowed: bool = True
+    view_count_limit: Optional[int] = None
+    
+    # Access tracking
+    access_count: int = 0
+    last_accessed: Optional[datetime] = None
+    accessed_ips: List[str] = []
+    
+    created_at: Optional[datetime] = None
+
+class DocumentCategory(BaseModel):
+    id: Optional[str] = None
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    color: str = "#3B82F6"  # Hex color for UI
+    icon: Optional[str] = None  # Icon name
+    
+    # Auto-categorization rules
+    auto_rules: Dict[str, Any] = {}  # AI rules for auto-categorization
+    
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class DocumentAuditLog(BaseModel):
+    id: Optional[str] = None
+    document_id: str
+    user_id: str
+    
+    action: str  # upload, view, download, share, delete, etc.
+    details: Optional[Dict[str, Any]] = {}
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    
+    timestamp: Optional[datetime] = None
+
+class DocumentExtraction(BaseModel):
+    """AI-powered document data extraction results"""
+    id: Optional[str] = None
+    document_id: str
+    
+    # Extracted structured data
+    extracted_fields: Dict[str, Any] = {}
+    confidence_scores: Dict[str, float] = {}
+    
+    # Text extraction
+    raw_text: Optional[str] = None
+    processed_text: Optional[str] = None
+    
+    # Document insights
+    document_insights: Dict[str, Any] = {}
+    suggested_reminders: List[Dict[str, Any]] = []
+    
+    # Processing metadata
+    extraction_engine: str = "ai"  # ai, ocr, manual
+    processing_time_ms: Optional[int] = None
+    
+    created_at: Optional[datetime] = None
