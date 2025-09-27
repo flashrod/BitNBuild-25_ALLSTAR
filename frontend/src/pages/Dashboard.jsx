@@ -35,6 +35,9 @@ const Dashboard = ({ user }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [taxData, setTaxData] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
+  const [cibilScore, setCibilScore] = useState(null);
+  const [cibilAnalysis, setCibilAnalysis] = useState(null);
+  const [cibilRecs, setCibilRecs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,31 +48,33 @@ const Dashboard = ({ user }) => {
   const fetchAllData = async () => {
     setLoading(true);
     setError("");
-    
     try {
       const userId = user?.id || 'mock-user-id';
-      
-      // Always use demo data for now to ensure charts show
       setDashboardData(getDemoData());
-      
       // Try to fetch real data in background
       try {
-        const [taxRes, recRes] = await Promise.allSettled([
+        const [taxRes, recRes, cibilRes, cibilRecRes] = await Promise.allSettled([
           fetch(`${API_URL}/tax/${userId}/calculate`).then(res => res.json()),
-          fetch(`${API_URL}/tax/${userId}/recommendations`).then(res => res.json())
+          fetch(`${API_URL}/tax/${userId}/recommendations`).then(res => res.json()),
+          fetch(`${API_URL}/cibil/${userId}/score`).then(res => res.json()),
+          fetch(`${API_URL}/cibil/${userId}/recommendations`).then(res => res.json())
         ]);
-
         if (taxRes.status === 'fulfilled' && taxRes.value) {
           setTaxData(taxRes.value);
         }
-
         if (recRes.status === 'fulfilled' && recRes.value?.recommendations) {
           setRecommendations(recRes.value.recommendations);
+        }
+        if (cibilRes.status === 'fulfilled' && cibilRes.value) {
+          setCibilScore(cibilRes.value.current_score);
+          setCibilAnalysis(cibilRes.value.score_factors);
+        }
+        if (cibilRecRes.status === 'fulfilled' && cibilRecRes.value?.recommendations) {
+          setCibilRecs(cibilRecRes.value.recommendations);
         }
       } catch (bgError) {
         console.log('Background data fetch failed, using demo data');
       }
-
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError('Unable to connect to server');
@@ -479,7 +484,7 @@ const Dashboard = ({ user }) => {
         </div>
 
         {/* Bottom Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Smart Patterns */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -491,7 +496,6 @@ const Dashboard = ({ user }) => {
               <DocumentTextIcon className="w-5 h-5 text-gray-400" />
               <h3 className="text-lg font-medium text-gray-900">Smart Patterns</h3>
             </div>
-            
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
@@ -501,7 +505,6 @@ const Dashboard = ({ user }) => {
                 <p className="text-sm font-medium text-gray-900 mb-1">EMI Payments</p>
                 <p className="text-xs text-gray-600">₹45,000/month</p>
               </div>
-              
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
                   <ArrowTrendingUpIcon className="w-5 h-5 text-emerald-600" />
@@ -510,7 +513,6 @@ const Dashboard = ({ user }) => {
                 <p className="text-sm font-medium text-gray-900 mb-1">SIP Investments</p>
                 <p className="text-xs text-gray-600">₹25,000/month</p>
               </div>
-              
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
                   <HomeIcon className="w-5 h-5 text-cyan-600" />
@@ -519,7 +521,6 @@ const Dashboard = ({ user }) => {
                 <p className="text-sm font-medium text-gray-900 mb-1">Rent Payment</p>
                 <p className="text-xs text-gray-600">₹30,000/month</p>
               </div>
-              
               <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
                   <ShieldCheckIcon className="w-5 h-5 text-violet-600" />
@@ -542,7 +543,6 @@ const Dashboard = ({ user }) => {
               <LightBulbIcon className="w-5 h-5 text-gray-400" />
               <h3 className="text-lg font-medium text-gray-900">AI Recommendations</h3>
             </div>
-            
             <div className="space-y-4">
               {recommendations.length > 0 ? (
                 recommendations.slice(0, 3).map((rec, idx) => (
@@ -577,6 +577,54 @@ const Dashboard = ({ user }) => {
                     <p className="text-emerald-600 font-medium text-xs">Save: ₹62,400</p>
                   </div>
                 </>
+              )}
+            </div>
+          </motion.div>
+
+          {/* CIBIL Score & Recommendations */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-100"
+          >
+            <div className="flex items-center space-x-3 mb-6">
+              <CreditCardIcon className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-lg font-medium text-gray-900">CIBIL Score</h3>
+            </div>
+            <div className="mb-4 flex items-center space-x-4">
+              <div className="flex flex-col items-center justify-center">
+                <span className="text-3xl font-bold text-indigo-700">{cibilScore || dashboardData?.summary?.cibil_score || '750'}</span>
+                <span className="text-xs text-gray-500">Current Score</span>
+              </div>
+              <div className="flex-1">
+                {cibilAnalysis && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(cibilAnalysis).map(([factor, details], idx) => (
+                      <div key={factor} className="bg-gray-50 rounded-lg p-2 flex flex-col">
+                        <span className="text-xs text-gray-500 font-medium">{factor.replace(/_/g, ' ')}</span>
+                        <span className="text-sm text-gray-900">{details.status || details.current || details.average_age || details.accounts || details.recent}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">Improvement Recommendations</h4>
+              {cibilRecs.length > 0 ? (
+                <ul className="space-y-2">
+                  {cibilRecs.slice(0, 3).map((rec, idx) => (
+                    <li key={idx} className="bg-gray-50 rounded-lg p-2 text-xs text-gray-700">
+                      <span className="font-medium text-indigo-700">{rec.title}:</span> {rec.description}
+                      {rec.expected_score_improvement && (
+                        <span className="ml-2 text-emerald-600 font-semibold">+{rec.expected_score_improvement} pts</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-xs text-gray-500">No recommendations available.</span>
               )}
             </div>
           </motion.div>

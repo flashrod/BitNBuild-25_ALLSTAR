@@ -1,12 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from typing import List, Dict, Optional
-import uuid
-from datetime import datetime
-import os
-from dotenv import load_dotenv
-
+from fastapi import File, UploadFile, HTTPException
 from app.core.config import settings
 from app.models.database import (
     User, UserCreate, UserLogin, Transaction, TaxData, 
@@ -16,7 +8,76 @@ from app.services.tax_calculator import TaxCalculator
 from app.services.cibil_advisor import CIBILAdvisor
 from app.services.file_parser import FileParser
 from app.deps.auth import get_current_user
+# Tax report endpoint (AIS/TIS + Capital Gains integration)
+async def generate_tax_report_api(
+    user_id: str,
+    ais_file: UploadFile = File(None),
+    broker_file: UploadFile = File(None),
+    asset_type: str = "equity"
+):
+    """
+    Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
+    """
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
 
+    # Get user transactions
+    user_transactions = transactions_db.get(user_id, [])
+
+    # Parse AIS/TIS transactions
+    ais_transactions = []
+
+    # Tax report endpoint (AIS/TIS + Capital Gains integration)
+    @app.post("/api/tax-report/{user_id}")
+    async def generate_tax_report_api(
+        user_id: str,
+        ais_file: UploadFile = File(None),
+        broker_file: UploadFile = File(None),
+        asset_type: str = "equity"
+    ):
+        """
+        Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
+        """
+        if user_id not in users_db:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get user transactions
+        user_transactions = transactions_db.get(user_id, [])
+
+        # Parse AIS/TIS transactions
+        ais_transactions = []
+        if ais_file:
+            ext = ais_file.filename.split('.')[-1].lower()
+            content = await ais_file.read()
+            if ext == "json":
+                ais_transactions = file_parser.parse_ais_json(content, ais_file.filename)
+            elif ext == "csv":
+                ais_transactions = file_parser.parse_ais_csv(content, ais_file.filename)
+            # Add PDF support if needed
+
+        # Parse broker capital gains transactions
+        capital_gains = []
+        if broker_file:
+            ext = broker_file.filename.split('.')[-1].lower()
+            content = await broker_file.read()
+            capital_gains = file_parser.parse_broker_csv(content, broker_file.filename)
+
+        # Generate tax report
+        report = file_parser.generate_tax_report(
+            user_transactions=user_transactions,
+            ais_transactions=ais_transactions,
+            capital_gains=capital_gains,
+            asset_type=asset_type
+        )
+        return JSONResponse(content=report)
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from typing import List, Dict, Optional
+import uuid
+from datetime import datetime
+import os
+from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
@@ -27,6 +88,50 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG
 )
+
+# Tax report endpoint (AIS/TIS + Capital Gains integration)
+@app.post("/api/tax-report/{user_id}")
+async def generate_tax_report_api(
+    user_id: str,
+    ais_file: UploadFile = File(None),
+    broker_file: UploadFile = File(None),
+    asset_type: str = "equity"
+):
+    """
+    Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
+    """
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get user transactions
+    user_transactions = transactions_db.get(user_id, [])
+
+    # Parse AIS/TIS transactions
+    ais_transactions = []
+    if ais_file:
+        ext = ais_file.filename.split('.')[-1].lower()
+        content = await ais_file.read()
+        if ext == "json":
+            ais_transactions = file_parser.parse_ais_json(content, ais_file.filename)
+        elif ext == "csv":
+            ais_transactions = file_parser.parse_ais_csv(content, ais_file.filename)
+        # Add PDF support if needed
+
+    # Parse broker capital gains transactions
+    capital_gains = []
+    if broker_file:
+        ext = broker_file.filename.split('.')[-1].lower()
+        content = await broker_file.read()
+        capital_gains = file_parser.parse_broker_csv(content, broker_file.filename)
+
+    # Generate tax report
+    report = file_parser.generate_tax_report(
+        user_transactions=user_transactions,
+        ais_transactions=ais_transactions,
+        capital_gains=capital_gains,
+        asset_type=asset_type
+    )
+    return JSONResponse(content=report)
 
 # Configure CORS
 app.add_middleware(

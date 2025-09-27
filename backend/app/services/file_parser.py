@@ -1,13 +1,183 @@
 import pandas as pd
 import pdfplumber
+import pytesseract
+from PIL import Image
 import re
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
 from io import BytesIO
+from datetime import datetime
 from app.models.database import Transaction, TransactionCategory
 import numpy as np
+from typing import List, Dict, Optional
+
+# Import the new CapitalGainsParser
+from app.services.capital_gains_parser import CapitalGainsParser
 
 class FileParser:
+    def generate_tax_report(
+        self,
+        user_transactions: List[Transaction],
+        ais_transactions: List[Transaction],
+        capital_gains: List[Dict],
+        asset_type: str = "equity"
+    ) -> Dict:
+        """
+        Integrate AIS/TIS and capital gains data for tax computation and reporting.
+        Returns a comprehensive tax report.
+        """
+        # 1. Cross-verify user and AIS transactions
+        verification = self.cross_verify_with_ais(user_transactions, ais_transactions)
+
+        # 2. Aggregate verified income and expenses
+        verified_income = sum(
+            t['user'].amount for t in verification['matched'] if t['user'].category == 'income'
+        )
+        verified_expense = sum(
+            t['user'].amount for t in verification['matched'] if t['user'].category != 'income'
+        )
+
+        # 3. Capital gains calculation
+        cg_summary = self.calculate_capital_gains(capital_gains, asset_type)
+
+        # 4. Total tax liability (income tax + capital gains tax)
+        total_tax = cg_summary.get('total_tax', 0)
+        # You can add more logic here for income tax computation based on slabs
+
+        # 5. Build report
+        report = {
+            'verified_income': verified_income,
+            'verified_expense': verified_expense,
+            'capital_gains': cg_summary,
+            'verification_summary': verification,
+            'total_tax_liability': total_tax,
+            'report_generated_at': datetime.now().isoformat()
+        }
+        return report
+    def calculate_capital_gains(self, capital_gains: List[Dict], asset_type: str = "equity") -> Dict:
+        """
+        Calculate Short-Term and Long-Term Capital Gains (STCG/LTCG) and tax liability.
+        asset_type: 'equity', 'mutual_fund', 'debt', 'crypto', etc.
+        """
+        from datetime import timedelta
+        stcg = 0.0
+        ltcg = 0.0
+        stcg_count = 0
+        ltcg_count = 0
+        stcg_details = []
+        ltcg_details = []
+
+        # Define holding period thresholds (in days)
+        holding_period_days = {
+            "equity": 365,
+            "mutual_fund": 365,
+            "debt": 1095,  # 3 years
+            "crypto": 1095
+        }
+        # Define tax rates (FY 2025-26)
+        tax_rates = {
+            "equity_stcg": 0.15,
+            "equity_ltcg": 0.10,  # LTCG above Rs 1 lakh
+            "mutual_fund_stcg": 0.15,
+            "mutual_fund_ltcg": 0.10,
+            "debt_stcg": "slab",
+            "debt_ltcg": 0.20,
+            "crypto_stcg": "slab",
+            "crypto_ltcg": 0.30
+        }
+
+        threshold = holding_period_days.get(asset_type, 365)
+        for txn in capital_gains:
+            hp = txn.get('holding_period')
+            gain = txn.get('gain_loss', 0)
+            # Parse holding period (days)
+            try:
+                hp_days = int(hp) if hp is not None else 0
+            except Exception:
+                hp_days = 0
+            if hp_days < threshold:
+                stcg += gain
+                stcg_count += 1
+                stcg_details.append(txn)
+            else:
+                ltcg += gain
+                ltcg_count += 1
+                ltcg_details.append(txn)
+
+        # Calculate tax liability
+        stcg_tax = stcg * tax_rates.get(f"{asset_type}_stcg", 0.15) if isinstance(tax_rates.get(f"{asset_type}_stcg"), float) else None
+        ltcg_tax = ltcg * tax_rates.get(f"{asset_type}_ltcg", 0.10) if isinstance(tax_rates.get(f"{asset_type}_ltcg"), float) else None
+
+        # For equity LTCG, Rs 1 lakh exemption
+        if asset_type == "equity" and ltcg > 100000:
+            ltcg_tax = (ltcg - 100000) * tax_rates["equity_ltcg"]
+        elif asset_type == "equity":
+            ltcg_tax = 0.0
+
+        summary = {
+            "stcg_total": stcg,
+            "ltcg_total": ltcg,
+            "stcg_count": stcg_count,
+            "ltcg_count": ltcg_count,
+            "stcg_tax": stcg_tax,
+            "ltcg_tax": ltcg_tax,
+            "stcg_details": stcg_details,
+            "ltcg_details": ltcg_details,
+            "total_tax": (stcg_tax or 0) + (ltcg_tax or 0)
+        }
+        return summary
+    def cross_verify_with_ais(self, user_transactions: List[Transaction], ais_transactions: List[Transaction]) -> Dict:
+        """
+        Cross-verify user-uploaded transactions with AIS/TIS transactions.
+        Returns a summary with verification status and discrepancies.
+        """
+        from collections import defaultdict
+        import difflib
+        matched = []
+        mismatched = []
+        missing_in_ais = []
+        missing_in_user = []
+
+        # Build lookup for AIS transactions by (date, amount, description)
+        ais_lookup = defaultdict(list)
+        for txn in ais_transactions:
+            key = (txn.date.date() if txn.date else None, round(txn.amount, 2), txn.category)
+            ais_lookup[key].append(txn)
+
+        # Match user transactions to AIS
+        for utxn in user_transactions:
+            key = (utxn.date.date() if utxn.date else None, round(utxn.amount, 2), utxn.category)
+            candidates = ais_lookup.get(key, [])
+            if candidates:
+                # Use description similarity for best match
+                best_match = max(candidates, key=lambda a: difflib.SequenceMatcher(None, utxn.description, a.description).ratio())
+                similarity = difflib.SequenceMatcher(None, utxn.description, best_match.description).ratio()
+                if similarity > 0.7:
+                    matched.append({'user': utxn, 'ais': best_match, 'similarity': similarity})
+                else:
+                    mismatched.append({'user': utxn, 'ais_candidates': candidates, 'similarity': similarity})
+            else:
+                missing_in_ais.append(utxn)
+
+        # Find AIS transactions missing in user data
+        user_lookup = defaultdict(list)
+        for txn in user_transactions:
+            key = (txn.date.date() if txn.date else None, round(txn.amount, 2), txn.category)
+            user_lookup[key].append(txn)
+        for atxn in ais_transactions:
+            key = (atxn.date.date() if atxn.date else None, round(atxn.amount, 2), atxn.category)
+            if not user_lookup.get(key):
+                missing_in_user.append(atxn)
+
+        summary = {
+            'matched': matched,
+            'mismatched': mismatched,
+            'missing_in_ais': missing_in_ais,
+            'missing_in_user': missing_in_user,
+            'match_count': len(matched),
+            'mismatch_count': len(mismatched),
+            'missing_in_ais_count': len(missing_in_ais),
+            'missing_in_user_count': len(missing_in_user)
+        }
+        return summary
     """Service for parsing financial statements from various file formats"""
     
     def __init__(self):
@@ -73,6 +243,7 @@ class FileParser:
             r'[\d,]+\.?\d*\s*(?:CR|DR|C|D)?',  # 1234.56 CR/DR
             r'\(\s*[\d,]+\.?\d*\s*\)'  # (1234.56) for negative amounts
         ]
+        self.last_pdf_analysis = {}
     
     def parse_csv(self, file_content: bytes, filename: str) -> List[Transaction]:
         """Parse CSV file containing transaction data"""
@@ -120,46 +291,43 @@ class FileParser:
             raise ValueError(f"Error parsing CSV file: {str(e)}")
     
     def parse_pdf(self, file_content: bytes, filename: str) -> List[Transaction]:
-        """Parse PDF bank statement - FIXED VERSION"""
-        try:
-            print(f"Starting PDF parsing for: {filename}")
-            transactions = []
-            
-            with pdfplumber.open(BytesIO(file_content)) as pdf:
-                print(f"PDF has {len(pdf.pages)} pages")
-                
-                for page_num, page in enumerate(pdf.pages):
-                    print(f"Processing page {page_num + 1}")
-                    
-                    # Try table extraction first
-                    tables = page.extract_tables()
-                    page_transactions = []
-                    
-                    if tables:
-                        print(f"Found {len(tables)} tables on page {page_num + 1}")
-                        for table_idx, table in enumerate(tables):
-                            if table and len(table) > 1:  # Has header + data
-                                table_transactions = self._extract_from_pdf_table(table)
-                                page_transactions.extend(table_transactions)
-                                print(f"Extracted {len(table_transactions)} transactions from table {table_idx + 1}")
-                    
-                    # If no transactions from tables, try text extraction
-                    if not page_transactions:
-                        print(f"No table transactions found, trying text extraction on page {page_num + 1}")
-                        text = page.extract_text()
-                        if text:
-                            page_transactions = self._extract_transactions_from_text(text)
-                            print(f"Extracted {len(page_transactions)} transactions from text on page {page_num + 1}")
-                    
-                    transactions.extend(page_transactions)
-            
-            print(f"Total transactions extracted from PDF: {len(transactions)}")
-            return transactions
-            
-        except Exception as e:
-            print(f"Error parsing PDF file: {str(e)}")
-            # Return empty list instead of recursing
-            return []
+        """
+        Parse PDF bank statement using both table and improved text extraction.
+        Falls back to OCR if no text is found.
+        """
+        transactions = []
+        with pdfplumber.open(BytesIO(file_content)) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                # 1. Try table extraction
+                tables = page.extract_tables()
+                for table in tables:
+                    table_transactions = self._extract_from_pdf_table(table)
+                    transactions.extend(table_transactions)
+
+                # 2. Try improved text extraction
+                text = page.extract_text()
+                if text:
+                    print(f"Extracted text from page {page_num+1}:\n{text[:500]}")
+                    text_transactions = self._extract_transactions_from_text(text)
+                    transactions.extend(text_transactions)
+                else:
+                    # 3. Fallback to OCR if no text
+                    print(f"No text found on page {page_num+1}, using OCR.")
+                    img = page.to_image(resolution=300).original
+                    ocr_text = pytesseract.image_to_string(img)
+                    print(f"OCR extracted text:\n{ocr_text[:500]}")
+                    ocr_transactions = self._extract_transactions_from_text(ocr_text)
+                    transactions.extend(ocr_transactions)
+
+        print(f"Total transactions extracted from PDF: {len(transactions)}")
+        self.last_pdf_analysis = self.analyze_transactions(transactions)
+        return transactions
+
+    def get_pdf_analysis(self) -> Dict:
+        """
+        Return the last PDF analysis (after parse_pdf).
+        """
+        return getattr(self, "last_pdf_analysis", {})
     
     def _extract_from_pdf_table(self, table):
         """Extract transactions from a PDF table"""
@@ -281,28 +449,45 @@ class FileParser:
                     desc_count += 1
         return desc_count >= len(col_data) * 0.5  # At least 50% should be descriptions
     
-    def _extract_transactions_from_text(self, text: str) -> List[Transaction]:
-        """Extract transactions from plain text"""
+    def _extract_transactions_from_text(self, text: str, statement_year: Optional[int] = None) -> List[Transaction]:
+        """
+        Extract transactions from text for formats like:
+        1 Feb  Description  100.00  0.00  40,100.00
+        """
         transactions = []
         lines = text.split('\n')
-        
-        print(f"Analyzing {len(lines)} lines of text")
-        
-        for line_num, line in enumerate(lines):
+        # Regex: day, month (abbrev), description, money out, money in, balance
+        pattern = re.compile(
+            r'^(\\d{1,2})\\s*([A-Za-z]{2,3})\\s+(.+?)\\s+([\\d,\\.]+)?\\s+([\\d,\\.]+)?\\s+([\\d,\\.]+)$'
+        )
+        month_map = {
+            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+        }
+        for line in lines:
             line = line.strip()
-            if not line or len(line) < 10:  # Skip short lines
-                continue
-            
-            # Look for lines that contain both date and amount patterns
-            has_date = any(re.search(pattern, line, re.IGNORECASE) for pattern in self.date_patterns)
-            has_amount = any(re.search(pattern, line, re.IGNORECASE) for pattern in self.amount_patterns)
-            
-            if has_date and has_amount:
-                transaction = self._parse_transaction_line(line)
-                if transaction:
-                    transactions.append(transaction)
-                    print(f"Extracted from line {line_num}: {transaction.date.strftime('%Y-%m-%d')}, {transaction.amount}, {transaction.description[:30]}...")
-        
+            match = pattern.match(line)
+            if match:
+                day, month_abbr, desc, money_out, money_in, balance = match.groups()
+                month = month_map.get(month_abbr[:3].title())
+                if not month or not statement_year:
+                    continue
+                try:
+                    date_obj = datetime(statement_year, month, int(day))
+                except Exception:
+                    continue
+                amount = 0.0
+                if money_out and float(money_out.replace(',', '')) > 0:
+                    amount = -float(money_out.replace(',', ''))
+                elif money_in and float(money_in.replace(',', '')) > 0:
+                    amount = float(money_in.replace(',', ''))
+                transaction = Transaction(
+                    date=date_obj,
+                    amount=amount,
+                    description=desc,
+                    category=self._categorize_transaction(desc, amount)
+                )
+                transactions.append(transaction)
         return transactions
     
     def _parse_transaction_line(self, line: str) -> Optional[Transaction]:
@@ -657,3 +842,93 @@ class FileParser:
             
         except Exception as e:
             raise ValueError(f"Error parsing Excel file: {str(e)}")
+
+    def parse_ais_json(self, file_content: bytes, filename: str) -> List[Transaction]:
+        """Parse AIS JSON file and normalize to Transaction model"""
+        import json
+        try:
+            data = json.loads(file_content.decode('utf-8'))
+            # TODO: Extract relevant transaction data from nested AIS JSON structure
+            transactions = []
+            # Example: Loop through AIS sections and extract transactions
+            # for section in data.get('sections', []):
+            #     for txn in section.get('transactions', []):
+            #         transactions.append(self._normalize_ais_json_txn(txn))
+            return transactions
+        except Exception as e:
+            raise ValueError(f"Error parsing AIS JSON file: {str(e)}")
+
+    def parse_ais_csv(self, file_content: bytes, filename: str) -> List[Transaction]:
+        """Parse AIS CSV file and normalize to Transaction model"""
+        try:
+            df = pd.read_csv(BytesIO(file_content))
+            # TODO: Normalize columns and extract transactions
+            transactions = []
+            # for _, row in df.iterrows():
+            #     transactions.append(self._normalize_ais_csv_row(row))
+            return transactions
+        except Exception as e:
+            raise ValueError(f"Error parsing AIS CSV file: {str(e)}")
+
+    def parse_broker_csv(self, file_content: bytes, filename: str) -> List[Dict]:
+        """
+        Use CapitalGainsParser to parse broker capital gains CSVs modularly.
+        """
+        parser = CapitalGainsParser()
+        result = parser.parse(file_content, filename)
+        return result.get('capital_gains', [])
+
+    def parse_broker_excel(self, file_content: bytes, filename: str) -> List[Dict]:
+        """
+        Use CapitalGainsParser to parse broker capital gains Excel (.xlsx) files modularly.
+        """
+        parser = CapitalGainsParser()
+        result = parser.parse_excel(file_content, filename)
+        return result.get('capital_gains', [])
+
+    def _normalize_ais_json_txn(self, txn: dict) -> Transaction:
+        """Convert AIS JSON transaction dict to Transaction model"""
+        # Typical AIS JSON keys: 'transactionDate', 'amount', 'description', 'category', 'tds', 'sft', etc.
+        date_str = txn.get('transactionDate') or txn.get('date')
+        date_obj = self._parse_date_string(date_str) if date_str else None
+        amount = self._parse_amount_string(str(txn.get('amount', 0)))
+        description = txn.get('description', '')
+        category = txn.get('category', '') or self._categorize_transaction(description, amount)
+        is_recurring = self._is_recurring_transaction(description)
+        tags = self._extract_tags(description)
+        return Transaction(
+            id=None,
+            user_id=None,
+            date=date_obj,
+            amount=abs(amount),
+            description=description,
+            category=category,
+            is_recurring=is_recurring,
+            tags=tags
+        )
+
+    def _normalize_ais_csv_row(self, row) -> Transaction:
+        """Convert AIS CSV row to Transaction model"""
+        # Typical AIS CSV columns: 'Transaction Date', 'Amount', 'Description', 'Category', etc.
+        date_str = row.get('Transaction Date') or row.get('date')
+        date_obj = self._parse_date_string(date_str) if date_str else None
+        amount = self._parse_amount_string(str(row.get('Amount', 0)))
+        description = row.get('Description', '')
+        category = row.get('Category', '') or self._categorize_transaction(description, amount)
+        is_recurring = self._is_recurring_transaction(description)
+        tags = self._extract_tags(description)
+        return Transaction(
+            id=None,
+            user_id=None,
+            date=date_obj,
+            amount=abs(amount),
+            description=description,
+            category=category,
+            is_recurring=is_recurring,
+            tags=tags
+        )
+
+    def _normalize_broker_csv_row(self, row) -> Dict:
+        """Convert broker CSV row to CapitalGainTransaction dict (deprecated, use parse_broker_csv)"""
+        # This method is now superseded by parse_broker_csv, which handles flexible mapping and calculations.
+        return {}
