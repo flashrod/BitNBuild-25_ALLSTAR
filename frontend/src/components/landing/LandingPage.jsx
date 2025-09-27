@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// (Navbar removed)
 import HeroSection from './HeroSection';
 import FeaturesSection from './FeaturesSection';
 import TestimonialsSection from './TestimonialsSection';
@@ -25,15 +24,12 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="w-full min-h-screen bg-white text-gray-900 overflow-x-hidden font-inter">
-  {/* Navbar removed for clean landing page */}
-      
-      <main className="overflow-hidden">
+    <div className="w-full min-h-screen bg-white text-gray-900 overflow-x-hidden font-inter relative">
+      <main className="overflow-hidden relative z-10">
         <div id="home">
           <HeroSection />
         </div>
       </main>
-
       <FeaturesSection />
       <TestimonialsSection />
       <ContactSection />
