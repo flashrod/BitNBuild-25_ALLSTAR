@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from typing import List, Dict, Optional
 import uuid
 from datetime import datetime
+import os
+from dotenv import load_dotenv
 
 from app.core.config import settings
 from app.models.database import (
@@ -13,6 +15,11 @@ from app.models.database import (
 from app.services.tax_calculator import TaxCalculator
 from app.services.cibil_advisor import CIBILAdvisor
 from app.services.file_parser import FileParser
+from app.deps.auth import get_current_user
+
+# Load environment variables
+load_dotenv()
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -40,6 +47,29 @@ users_db = {}
 transactions_db = {}
 tax_data_db = {}
 cibil_data_db = {}
+
+# Initialize mock user for development
+mock_user_id = 'mock-user-id'
+mock_user = User(
+    id=mock_user_id,
+    email='mock@user.com',
+    name='Mock User',
+    phone='1234567890',
+    pan_number='MOCK12345P',
+    created_at=datetime.now()
+)
+users_db[mock_user_id] = mock_user
+transactions_db[mock_user_id] = []
+tax_data_db[mock_user_id] = TaxData(
+    id=str(uuid.uuid4()),
+    user_id=mock_user_id,
+    tax_year=settings.TAX_YEAR,
+    gross_income=0
+)
+cibil_data_db[mock_user_id] = CIBILData(
+    id=str(uuid.uuid4()),
+    user_id=mock_user_id
+)
 
 # Root endpoint
 @app.get("/")
@@ -118,10 +148,13 @@ async def login(credentials: UserLogin):
 @app.post("/upload/{user_id}")
 async def upload_file(user_id: str, file: UploadFile = File(...)):
     """Upload and process financial statement file"""
+    print(f"Upload request for user_id: {user_id}")
+    print(f"Available users: {list(users_db.keys())}")
+    
     if user_id not in users_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail=f"User {user_id} not found. Available users: {list(users_db.keys())}"
         )
     
     # Validate file extension
@@ -137,12 +170,16 @@ async def upload_file(user_id: str, file: UploadFile = File(...)):
     
     # Parse file based on type
     try:
+        print(f"Processing file: {file.filename}, type: {file_ext}")
+        
         if file_ext == 'csv':
             transactions = file_parser.parse_csv(content, file.filename)
         elif file_ext == 'pdf':
             transactions = file_parser.parse_pdf(content, file.filename)
         else:
             transactions = file_parser.parse_csv(content, file.filename)  # Try CSV for Excel files
+        
+        print(f"Parsed {len(transactions)} transactions")
         
         # Store transactions
         if user_id not in transactions_db:
@@ -153,8 +190,11 @@ async def upload_file(user_id: str, file: UploadFile = File(...)):
             transaction.id = str(uuid.uuid4())
             transactions_db[user_id].append(transaction)
         
+        print(f"Stored transactions for user {user_id}, total: {len(transactions_db[user_id])}")
+        
         # Analyze transactions
         analysis = file_parser.analyze_transactions(transactions)
+        print(f"Analysis complete: {len(analysis)} keys")
         
         # Update tax data with income information
         if user_id in tax_data_db and 'income_analysis' in analysis:
@@ -167,6 +207,9 @@ async def upload_file(user_id: str, file: UploadFile = File(...)):
         }
         
     except Exception as e:
+        print(f"Error processing file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing file: {str(e)}"
@@ -409,6 +452,11 @@ async def get_dashboard(user_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/profile")
+async def read_user_profile(current_user: dict = Depends(get_current_user)):
+    # Example: Fetch user-specific data using current_user["id"]
+    return {"message": "Authenticated!", "user_id": current_user["id"]}
 
 if __name__ == "__main__":
     import uvicorn

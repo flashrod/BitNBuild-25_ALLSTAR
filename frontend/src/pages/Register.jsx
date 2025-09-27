@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { UserIcon, EnvelopeIcon, LockClosedIcon, PhoneIcon } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import { supabase } from '../supabaseClient'; // Make sure this file exists and is correct
 
 const Register = ({ onLogin }) => {
   const navigate = useNavigate();
@@ -25,7 +25,7 @@ const Register = ({ onLogin }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -35,23 +35,28 @@ const Register = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/auth/register', {
-        name: formData.name,
+      // Only pass email and password, optionally metadata
+      const { error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
-        phone: formData.phone
+        options: {
+          data: {
+            name: formData.name,
+            phone: formData.phone
+          }
+        }
       });
-      
-      // Auto-login after registration
-      const loginResponse = await axios.post('http://localhost:8000/auth/login', {
-        email: formData.email,
-        password: formData.password
-      });
-      
-      onLogin(loginResponse.data);
-      navigate('/dashboard');
-    } catch (error) {
-      setError(error.response?.data?.detail || 'Registration failed. Please try again.');
+
+      if (error) {
+        setError(error.message || 'Registration failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Optionally, auto-login or redirect
+      navigate('/login');
+    } catch (err) {
+      setError('Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }

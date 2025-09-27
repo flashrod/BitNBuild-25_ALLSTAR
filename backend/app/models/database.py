@@ -51,7 +51,7 @@ class UserLogin(BaseModel):
 
 class Transaction(BaseModel):
     id: Optional[str] = None
-    user_id: str
+    user_id: Optional[str] = None
     date: datetime
     description: str
     amount: float

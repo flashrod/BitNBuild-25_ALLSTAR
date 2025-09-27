@@ -14,24 +14,43 @@ import {
   CloudArrowUpIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import { supabase } from "../supabaseClient";
 
 const Dashboard = ({ user }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
   const fetchDashboardData = async () => {
+    setError("");
+    if (!user?.id) return;
     try {
-      const response = await axios.get(`http://localhost:8000/dashboard/${user?.user_id || 'demo'}`);
-      setDashboardData(response.data);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      // Set demo data if API fails
-      setDashboardData(getDemoData());
+      // Get Supabase access token
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/dashboard/${user.id}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        }
+      );
+      if (!res.ok) {
+        const errData = await res.json();
+        setError(errData.detail || "Failed to fetch dashboard data.");
+        setDashboardData(null);
+      } else {
+        setDashboardData(await res.json());
+      }
+    } catch (err) {
+      setError("Error fetching dashboard data.");
+      setDashboardData(null);
     } finally {
       setLoading(false);
     }
@@ -265,6 +284,7 @@ const Dashboard = ({ user }) => {
           <p className="text-sm text-gray-600 mt-1">Monitor your credit health</p>
         </button>
       </motion.div>
+      {error && <div>{typeof error === "string" ? error : JSON.stringify(error)}</div>}
     </div>
   );
 };

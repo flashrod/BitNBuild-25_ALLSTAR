@@ -26,21 +26,16 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/auth/login', formData);
-      onLogin(response.data);
+      // MOCK LOGIN: Accept any credentials
+      const mockUser = {
+        id: 'mock-user-id',
+        email: formData.email,
+        name: 'Mock User',
+      };
+      onLogin(mockUser);
       navigate('/dashboard');
-    } catch (error) {
-      setError(error.response?.data?.detail || 'Login failed. Please try again.');
-      // For demo, use mock login
-      if (formData.email === 'demo@taxwise.com' && formData.password === 'demo123') {
-        onLogin({
-          user_id: 'demo-user',
-          name: 'Demo User',
-          email: 'demo@taxwise.com',
-          access_token: 'demo-token'
-        });
-        navigate('/dashboard');
-      }
+    } catch (err) {
+      setError('Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
