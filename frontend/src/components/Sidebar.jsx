@@ -17,6 +17,7 @@ const Sidebar = () => {
     { path: '/upload', name: 'Upload Files', icon: CloudArrowUpIcon },
     { path: '/tax', name: 'Tax Calculator', icon: CalculatorIcon },
     { path: '/cibil', name: 'CIBIL Advisor', icon: CreditCardIcon },
+    { path: '/debt', name: 'Debt Simulator', icon: ChartBarIcon },
   ];
 
   const secondaryItems = [

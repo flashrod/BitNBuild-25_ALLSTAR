@@ -1,3 +1,33 @@
+from fastapi import FastAPI
+from app.services.debt_service import DebtService
+from app.models.debt import Debt
+from fastapi import APIRouter, UploadFile, File, Form
+from typing import List
+
+debt_service = DebtService()
+debt_router = APIRouter()
+
+# In-memory debt store for demo (replace with DB in production)
+user_debts = {}
+
+@debt_router.post('/debt/ingest')
+async def ingest_debts(user_id: str = Form(...), file: UploadFile = File(...)):
+    content = await file.read()
+    debts = debt_service.ingest_debts(content, file.filename)
+    user_debts[user_id] = debts
+    return {'success': True, 'count': len(debts)}
+
+@debt_router.get('/debt/list')
+async def list_debts(user_id: str):
+    debts = user_debts.get(user_id, [])
+    return {'debts': [vars(d) for d in debts]}
+
+@debt_router.post('/debt/simulate')
+async def simulate_debt(user_id: str = Form(...), strategy: str = Form('snowball')):
+    debts = user_debts.get(user_id, [])
+    result = debt_service.simulate_repayment(debts, strategy)
+    return result
+
 from fastapi import File, UploadFile, HTTPException
 from app.core.config import settings
 from app.models.database import (
@@ -88,6 +118,9 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG
 )
+
+# Register debt router on the final app instance
+app.include_router(debt_router)
 
 # Tax report endpoint (AIS/TIS + Capital Gains integration)
 @app.post("/api/tax-report/{user_id}")
