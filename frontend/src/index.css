@@ -1,99 +1,73 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/* Theme tokens (Tailwind v4) */
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui;
+
+  --color-primary-50:  #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+  --color-primary-950: #082f49;
+}
 
 @layer base {
-  * {
-    @apply box-border;
-  }
-  
-  html {
-    @apply scroll-smooth;
-  }
-  
-  body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; font-family: var(--font-sans); }
+  body { @apply bg-gray-50 text-gray-900 antialiased; }
 }
 
 @layer components {
   .btn-primary {
     @apply px-6 py-3 bg-primary-600 text-white font-medium rounded-xl
-    hover:bg-primary-700 transition-all duration-200 
-    focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
-    disabled:opacity-50 disabled:cursor-not-allowed;
+           hover:bg-primary-700 transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
   .btn-secondary {
     @apply px-6 py-3 bg-white text-gray-700 font-medium rounded-xl border border-gray-200
-    hover:bg-gray-50 transition-all duration-200
-    focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+           hover:bg-gray-50 transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
   }
-  
   .card {
     @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-6
-    hover:shadow-md transition-shadow duration-200;
+           hover:shadow-md transition-shadow duration-200;
   }
-  
   .input-field {
     @apply w-full px-4 py-3 bg-white border border-gray-200 rounded-xl
-    focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-    placeholder:text-gray-400 transition-all duration-200;
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           placeholder:text-gray-400 transition-all duration-200;
   }
-  
-  .section-spacing {
-    @apply py-12 px-6 md:py-16 md:px-8 lg:py-20 lg:px-12;
-  }
-  
-  .glass-effect {
-    @apply backdrop-blur-lg bg-white/70 border border-white/20;
-  }
+  .section-spacing { @apply py-12 px-6 md:py-16 md:px-8 lg:py-20 lg:px-12; }
+  .glass-effect { @apply backdrop-blur-lg bg-white/70 border border-white/20; }
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-  
-  .fade-in {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-  
-  .slide-up {
-    animation: slideUp 0.3s ease-out;
-  }
+  .text-balance { text-wrap: balance; }
+  .fade-in { animation: fadeIn 0.5s ease-in-out; }
+  .slide-up { animation: slideUp 0.3s ease-out; }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f3f4f6; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-::-webkit-scrollbar-track {
-  @apply bg-gray-100;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
-}
-
-/* Loading spinner */
 .spinner {
   border: 2px solid #f3f3f3;
-  border-top: 2px solid #0284c7;
+  border-top: 2px solid var(--color-primary-600);
   border-radius: 50%;
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+@keyframes spin { 0% {transform: rotate(0);} 100% {transform: rotate(360deg);} }
+@keyframes fadeIn { 0% {opacity:0;} 100% {opacity:1;} }
+@keyframes slideUp { 0% {transform:translateY(20px); opacity:0;} 100% {transform:translateY(0); opacity:1;} }

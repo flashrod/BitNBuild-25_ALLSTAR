@@ -11,8 +11,8 @@ import {
   DocumentTextIcon,
   CreditCardIcon,
   CalculatorIcon,
-  TrendingUpIcon,
   CloudArrowUpIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 
@@ -226,7 +226,7 @@ const Dashboard = ({ user }) => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Monthly Savings Trend</h3>
           <div className="flex items-center space-x-2">
-            <TrendingUpIcon className="w-5 h-5 text-green-600" />
+            <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-green-600">
               {dashboardData?.financial_summary?.savings_rate?.toFixed(1)}% savings rate
             </span>
