@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+
+
+# Virtual env
+venv/
+.envrc
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+nohup.out
+
+# Coverage / testing
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.dmypy.json
+.prof
+
+# Type checking / tooling
+ruff_cache/
+.pyright/
+.mypy_cache/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Misc
+*.sqlite3
+tmp/
+
+
+venv/
