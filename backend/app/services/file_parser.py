@@ -566,6 +566,20 @@ class FileParser:
             if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
                 return 0
             return val
+
+        # Explicit pattern breakdowns
+        def pattern_df(pattern):
+            return df[df['category'] == pattern]
+
+        def pattern_summary(pattern):
+            pdf = pattern_df(pattern)
+            return {
+                "count": int(pdf.shape[0]),
+                "total": safe(pdf['amount'].sum()),
+                "average": safe(pdf['amount'].mean()),
+                "transactions": pdf.to_dict(orient='records')
+            }
+
         analysis = {
             "total_transactions": len(transactions),
             "date_range": {
@@ -591,7 +605,12 @@ class FileParser:
                 "count": int(df[df['is_recurring'] == True]['amount'].count()),
                 "total_amount": safe(df[df['is_recurring'] == True]['amount'].sum())
             },
-            "monthly_trend": self._calculate_monthly_trend(df)
+            "monthly_trend": self._calculate_monthly_trend(df),
+            # Explicit pattern groups
+            "emi": pattern_summary("emi"),
+            "sip": pattern_summary("sip"),
+            "rent": pattern_summary("rent"),
+            "insurance": pattern_summary("insurance")
         }
         return analysis
     
