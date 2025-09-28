@@ -20,8 +20,10 @@ const FileUpload = ({ user }) => {
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const file = e.target.files[0];
-    console.log('File selected:', file); // Debug log
+    console.log('File selected:', file);
     if (file) {
       setSelectedFile(file);
       setUploadStatus('');
@@ -77,7 +79,6 @@ const FileUpload = ({ user }) => {
       if (res.ok) {
         setUploadStatus('Upload successful! You can upload another file.');
         setAnalysis(data.analysis);
-        // Reset only the file input, keep analysis visible
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -153,7 +154,12 @@ const FileUpload = ({ user }) => {
           <div className="flex space-x-2">
             {analysis && (
               <button
-                onClick={resetFileInput}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  resetFileInput();
+                }}
                 className="px-4 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
               >
                 Clear Analysis
@@ -164,7 +170,11 @@ const FileUpload = ({ user }) => {
         
         <div 
           className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors cursor-pointer"
-          onClick={handleFileSelect}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleFileSelect();
+          }}
         >
           <CloudArrowUpIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <div className="mb-4">
@@ -188,13 +198,21 @@ const FileUpload = ({ user }) => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
               <div className="flex items-center justify-center space-x-2">
                 <DocumentTextIcon className="w-5 h-5 text-green-600" />
                 <span className="text-green-800 font-medium">{selectedFile.name}</span>
                 <button
-                  onClick={removeSelectedFile}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeSelectedFile();
+                  }}
                   className="ml-2 text-red-600 hover:text-red-800"
                   title="Remove file"
                 >
@@ -205,7 +223,9 @@ const FileUpload = ({ user }) => {
           )}
 
           <button
+            type="button"
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               handleUpload();
             }}

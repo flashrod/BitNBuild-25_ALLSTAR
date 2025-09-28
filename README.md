@@ -68,6 +68,8 @@ python -m venv venv
 4. Install dependencies:
 ```bash
 pip install -r requirements.txt
+pip install email-validator
+uvicorn main:app --reload
 ```
 
 5. Create a `.env` file based on `.env.example`:

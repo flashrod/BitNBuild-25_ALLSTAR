@@ -21,8 +21,7 @@ import {
 import { GlassPanel } from '../components/GlassPanel'; 
 import Button from '../components/Button';
 import Input from '../components/Input';
-import { api } from '../api';
-
+import api from '../api';
 
 const DocumentVault = ({ user }) => {
   // --- State and hooks ---
@@ -46,8 +45,9 @@ const DocumentVault = ({ user }) => {
     { value: 'investment', label: 'Investment', icon: '💹' },
   ];
 
+  // Guard: Only load if user and user.id exist
   useEffect(() => {
-    if (user) {
+    if (user && user.id) {
       loadDocuments();
       loadReminders();
       loadStats();
@@ -57,8 +57,8 @@ const DocumentVault = ({ user }) => {
   const loadDocuments = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/vault/${user.user_id}/documents`);
-      setDocuments(response.data.documents);
+      const response = await api.get(`/vault/${user.id}/documents`);
+      setDocuments(response.data.documents || []);
     } catch (error) {
       console.error('Failed to load documents:', error);
     } finally {
@@ -68,8 +68,8 @@ const DocumentVault = ({ user }) => {
 
   const loadReminders = async () => {
     try {
-      const response = await api.get(`/vault/${user.user_id}/reminders`);
-      setReminders(response.data.reminders);
+      const response = await api.get(`/vault/${user.id}/reminders`);
+      setReminders(response.data.reminders || []);
     } catch (error) {
       console.error('Failed to load reminders:', error);
     }
@@ -77,8 +77,8 @@ const DocumentVault = ({ user }) => {
 
   const loadStats = async () => {
     try {
-      const response = await api.get(`/vault/${user.user_id}/stats`);
-      setStats(response.data);
+      const response = await api.get(`/vault/${user.id}/stats`);
+      setStats(response.data || {});
     } catch (error) {
       console.error('Failed to load stats:', error);
     }
@@ -92,9 +92,9 @@ const DocumentVault = ({ user }) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('document_type', 'other'); // Default, will be updated in modal
+      formData.append('document_type', 'other');
       
-      const response = await api.post(`/vault/${user.user_id}/upload`, formData, {
+      const response = await api.post(`/vault/${user.id}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -116,8 +116,7 @@ const DocumentVault = ({ user }) => {
   const handleDocumentView = async (document) => {
     setSelectedDocument(document);
     try {
-      // Log document access
-      await api.get(`/vault/${user.user_id}/documents/${document.id}`);
+      await api.get(`/vault/${user.id}/documents/${document.id}`);
     } catch (error) {
       console.error('Failed to load document details:', error);
     }
@@ -125,7 +124,7 @@ const DocumentVault = ({ user }) => {
 
   const handleDocumentDownload = async (document) => {
     try {
-      const response = await api.get(`/vault/${user.user_id}/documents/${document.id}/download`, {
+      const response = await api.get(`/vault/${user.id}/documents/${document.id}/download`, {
         responseType: 'blob',
       });
       
@@ -149,7 +148,7 @@ const DocumentVault = ({ user }) => {
     }
 
     try {
-      await api.delete(`/vault/${user.user_id}/documents/${document.id}`);
+      await api.delete(`/vault/${user.id}/documents/${document.id}`);
       await loadDocuments();
       await loadStats();
       setSelectedDocument(null);
@@ -211,6 +210,23 @@ const DocumentVault = ({ user }) => {
     </GlassPanel>
   );
 
+  // === Fallback UI if user not authenticated ===
+  if (!user || !user.id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <GlassPanel className="p-12 text-center">
+            <ExclamationTriangleIcon className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h3>
+            <p className="text-gray-600 max-w-md mx-auto">
+              Please log in to access your secure document vault.
+            </p>
+          </GlassPanel>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
@@ -228,14 +244,228 @@ const DocumentVault = ({ user }) => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        {/* ...existing code for header, statistics, tabs, tab content, modals... */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Document Vault</h1>
+          <p className="text-gray-600 mt-2">
+            Securely store, organize, and manage your important documents.
+          </p>
+        </div>
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <StatCard 
+            title="Total Documents" 
+            value={stats.total_documents || 0} 
+            icon={FolderIcon} 
+            color="blue"
+          />
+          <StatCard 
+            title="Active Documents" 
+            value={stats.active_documents || 0} 
+            icon={ShieldCheckIcon} 
+            color="green"
+          />
+          <StatCard 
+            title="Expiring Soon" 
+            value={stats.expiring_soon || 0} 
+            icon={BellIcon} 
+            color="yellow"
+          />
+          <StatCard 
+            title="Expired" 
+            value={stats.expired_documents || 0} 
+            icon={ExclamationTriangleIcon} 
+            color="red"
+          />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            className={`px-4 py-2 font-medium text-sm ${
+              activeTab === 'documents'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActiveTab('documents')}
+          >
+            My Documents
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm ${
+              activeTab === 'reminders'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActiveTab('reminders')}
+          >
+            Reminders
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm ${
+              activeTab === 'insights'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActiveTab('insights')}
+          >
+            Insights
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {activeTab === 'documents' && (
+            <motion.div
+              key="documents"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              {/* Controls */}
+              <div className="flex flex-col sm:flex-row justify-between gap-4">
+                <div className="flex gap-3">
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search documents..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All Types</option>
+                    {documentTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center"
+                >
+                  <CloudArrowUpIcon className="h-4 w-4 mr-2" />
+                  Upload Document
+                </Button>
+              </div>
+
+              {/* Document List */}
+              {filteredDocuments.length === 0 ? (
+                <GlassPanel className="p-12 text-center">
+                  <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No documents found</h3>
+                  <p className="text-gray-500">
+                    {searchQuery || filterType !== 'all'
+                      ? 'Try adjusting your search or filter.'
+                      : 'Upload your first document to get started.'}
+                  </p>
+                </GlassPanel>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredDocuments.map((doc) => (
+                    <GlassPanel key={doc.id} className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="text-2xl">{getDocumentIcon(doc.document_type)}</div>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(doc.status)}`}>
+                          {doc.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <h3 className="font-semibold text-gray-900 mb-1">{doc.title}</h3>
+                      <p className="text-sm text-gray-600 mb-3 capitalize">
+                        {doc.document_type.replace('_', ' ')}
+                      </p>
+                      <div className="flex justify-between text-xs text-gray-500 mb-3">
+                        <span>{formatDate(doc.created_at)}</span>
+                        <span>{formatFileSize(doc.file_size)}</span>
+                      </div>
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleDocumentView(doc)}
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleDocumentDownload(doc)}
+                        >
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </GlassPanel>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'reminders' && (
+            <motion.div
+              key="reminders"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <RemindersDashboard reminders={reminders} user={user} />
+            </motion.div>
+          )}
+
+          {activeTab === 'insights' && (
+            <motion.div
+              key="insights"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <InsightsDashboard stats={stats} documents={documents} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Modals */}
+        <AnimatePresence>
+          {showUploadModal && (
+            <UploadModal
+              user={user}
+              onClose={() => setShowUploadModal(false)}
+              onUploadSuccess={() => {
+                loadDocuments();
+                loadStats();
+                setShowUploadModal(false);
+              }}
+              documentTypes={documentTypes}
+            />
+          )}
+
+          {selectedDocument && (
+            <DocumentDetailsModal
+              document={selectedDocument}
+              user={user}
+              onClose={() => setSelectedDocument(null)}
+              onDelete={handleDocumentDelete}
+              onDownload={handleDocumentDownload}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 };
 
-// Separate components for better organization
-const RemindersDashboard = ({ reminders, user, onReminderUpdate }) => {
+// --- Sub-components (unchanged from your original) ---
+
+const RemindersDashboard = ({ reminders, user }) => {
   const urgentReminders = reminders.filter(r => {
     const daysUntil = Math.ceil((new Date(r.reminder_date) - new Date()) / (1000 * 60 * 60 * 24));
     return daysUntil <= 7;
@@ -423,7 +653,7 @@ const InsightsDashboard = ({ stats, documents }) => {
   );
 };
 
-// Upload Modal Component
+// Upload Modal Component - FIXED
 const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
   const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
@@ -438,7 +668,10 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // FIXED: Added preventDefault and stopPropagation
   const handleFileSelect = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     const file = event.target.files[0];
     setSelectedFile(file);
     if (file && !formData.title) {
@@ -446,8 +679,10 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
     }
   };
 
+  // FIXED: Added proper event handling
   const handleSubmit = async (event) => {
     event.preventDefault();
+    event.stopPropagation();
     if (!selectedFile) {
       alert('Please select a file to upload');
       return;
@@ -458,14 +693,13 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
       const submitData = new FormData();
       submitData.append('file', selectedFile);
       
-      // Add all form fields
       Object.entries(formData).forEach(([key, value]) => {
         if (value) {
           submitData.append(key, value);
         }
       });
 
-      const response = await api.post(`/vault/${user.user_id}/upload`, submitData, {
+      const response = await api.post(`/vault/${user.id}/upload`, submitData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -488,7 +722,13 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -498,15 +738,27 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
       >
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Secure Document</h2>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* File Upload */}
+        {/* FIXED: Added proper form handling */}
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSubmit(e);
+          }}
+          className="space-y-4"
+        >
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select File *
             </label>
+            {/* FIXED: Added event handling to upload zone */}
             <div 
               className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
             >
               {selectedFile ? (
                 <div className="space-y-2">
@@ -531,7 +783,6 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
             />
           </div>
 
-          {/* Basic Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -564,7 +815,6 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
             </div>
           </div>
 
-          {/* Additional Fields */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Description
@@ -624,18 +874,28 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
             />
           </div>
 
-          {/* Actions */}
           <div className="flex justify-end space-x-3 pt-4 border-t">
+            {/* FIXED: Added type="button" */}
             <Button
               type="button"
               variant="secondary"
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
               disabled={uploading}
             >
               Cancel
             </Button>
+            {/* FIXED: Changed to type="button" and added event handling */}
             <Button
-              type="submit"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSubmit(e);
+              }}
               disabled={uploading || !selectedFile}
             >
               {uploading ? (
@@ -657,7 +917,6 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
   );
 };
 
-// Document Details Modal Component
 const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload }) => {
   return (
     <motion.div
@@ -665,7 +924,13 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -769,7 +1034,6 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
           </div>
         </div>
 
-        {/* Tags */}
         {document.tags && document.tags.length > 0 && (
           <div className="mb-6">
             <h3 className="font-semibold text-gray-900 mb-2">Tags</h3>
@@ -787,11 +1051,15 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex justify-between pt-4 border-t">
           <Button
+            type="button"
             variant="danger"
-            onClick={() => onDelete(document)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete(document);
+            }}
             className="flex items-center"
           >
             <TrashIcon className="h-4 w-4 mr-2" />
@@ -799,13 +1067,23 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
           </Button>
           <div className="flex space-x-3">
             <Button
+              type="button"
               variant="secondary"
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }}
             >
               Close
             </Button>
             <Button
-              onClick={() => onDownload(document)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDownload(document);
+              }}
               className="flex items-center"
             >
               <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
@@ -817,6 +1095,5 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
     </motion.div>
   );
 };
-
 
 export default DocumentVault;
