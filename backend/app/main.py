@@ -39,7 +39,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
+# Initialize servicesfrom app.services.chatbot import ask_gemini
+
 debt_service = DebtService()
 tax_calculator = TaxCalculator()
 cibil_advisor = CIBILAdvisor()
@@ -703,6 +704,15 @@ async def analyze_gains(user_id: str = Form(...)):
     return result
 
 app.include_router(capital_gains_router)
+
+# Chatbot endpoint for dashboard.
+@app.post("/chat")
+async def chat_with_ai(payload: dict):
+    question = payload.get("message", "")
+    if not question:
+        return {"reply": "Please enter a message."}
+    reply = ask_gemini(question)
+    return {"reply": reply}
 
 if __name__ == "__main__":
     import uvicorn

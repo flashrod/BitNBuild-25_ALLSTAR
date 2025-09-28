@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import Chatbot from '../components/ChatBot';
 import {
   ChartBarIcon,
   CurrencyRupeeIcon,
@@ -630,6 +631,8 @@ const Dashboard = ({ user }) => {
           </motion.div>
         </div>
       </div>
+      {/* Chatbot floating widget */}
+      <Chatbot />
     </div>
   );
 };
