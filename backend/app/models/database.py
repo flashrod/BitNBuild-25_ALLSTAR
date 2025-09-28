@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
+from beanie import Document
 from enum import Enum
 
 class UserRole(str, Enum):
@@ -28,7 +29,7 @@ class TransactionCategory(str, Enum):
     EDUCATION = "education"
     OTHER = "other"
 
-class User(BaseModel):
+class User(Document):
     id: Optional[str] = None
     email: EmailStr
     name: str
@@ -49,7 +50,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class Transaction(BaseModel):
+class Transaction(Document):
     id: Optional[str] = None
     user_id: Optional[str] = None
     date: datetime
@@ -61,7 +62,10 @@ class Transaction(BaseModel):
     tags: List[str] = []
     created_at: Optional[datetime] = None
 
-class TaxData(BaseModel):
+    class Settings:
+        name = "transactions"
+
+class TaxData(Document):
     id: Optional[str] = None
     user_id: str
     tax_year: int
@@ -90,7 +94,10 @@ class TaxData(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-class CIBILData(BaseModel):
+    class Settings:
+        name = "tax_data"
+
+class CIBILData(Document):
     id: Optional[str] = None
     user_id: str
     
@@ -123,7 +130,10 @@ class CIBILData(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-class FileUpload(BaseModel):
+    class Settings:
+        name = "cibil_data"
+
+class FileUpload(Document):
     id: Optional[str] = None
     user_id: str
     filename: str
@@ -133,6 +143,9 @@ class FileUpload(BaseModel):
     processing_errors: Optional[str] = None
     uploaded_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
+
+    class Settings:
+        name = "file_uploads"
 
 class TaxRecommendation(BaseModel):
     category: str
@@ -209,7 +222,7 @@ class ReminderFrequency(str, Enum):
     QUARTERLY = "quarterly"
     YEARLY = "yearly"
 
-class Document(BaseModel):
+class Document(Document):
     id: Optional[str] = None
     user_id: str
     title: str
@@ -248,7 +261,7 @@ class Document(BaseModel):
     accessed_at: Optional[datetime] = None
     access_count: int = 0
 
-class DocumentReminder(BaseModel):
+class DocumentReminder(Document):
     id: Optional[str] = None
     user_id: str
     document_id: Optional[str] = None  # Can be null for custom reminders
@@ -279,7 +292,7 @@ class DocumentReminder(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-class DocumentShare(BaseModel):
+class DocumentShare(Document):
     id: Optional[str] = None
     document_id: str
     shared_by_user_id: str
@@ -298,7 +311,10 @@ class DocumentShare(BaseModel):
     
     created_at: Optional[datetime] = None
 
-class DocumentCategory(BaseModel):
+    class Settings:
+        name = "document_shares"
+
+class DocumentCategory(Document):
     id: Optional[str] = None
     user_id: str
     name: str
@@ -312,7 +328,10 @@ class DocumentCategory(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-class DocumentAuditLog(BaseModel):
+    class Settings:
+        name = "document_categories"
+
+class DocumentAuditLog(Document):
     id: Optional[str] = None
     document_id: str
     user_id: str
@@ -324,7 +343,10 @@ class DocumentAuditLog(BaseModel):
     
     timestamp: Optional[datetime] = None
 
-class DocumentExtraction(BaseModel):
+    class Settings:
+        name = "document_audit_logs"
+
+class DocumentExtraction(Document):
     """AI-powered document data extraction results"""
     id: Optional[str] = None
     document_id: str
@@ -346,3 +368,6 @@ class DocumentExtraction(BaseModel):
     processing_time_ms: Optional[int] = None
     
     created_at: Optional[datetime] = None
+
+    class Settings:
+        name = "document_extractions"

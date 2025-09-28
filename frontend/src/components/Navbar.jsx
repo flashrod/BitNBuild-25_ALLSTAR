@@ -1,11 +1,13 @@
 
 import React, { useEffect, useState } from 'react';
-import { BellIcon, UserCircleIcon, CogIcon } from '@heroicons/react/24/outline';
+import { BellIcon, CogIcon, Bars3Icon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
+import { useAuth } from '../AuthContext';
 
-const Navbar = ({ user, onLogout }) => {
+const Navbar = ({ sidebarOpen, setSidebarOpen, handleLogout }) => {
   const [show, setShow] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const { currentUser } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -35,6 +37,12 @@ const Navbar = ({ user, onLogout }) => {
         <div className="flex flex-row items-center justify-between h-16 w-full">
           {/* Logo and Brand - only in navbar */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded-md text-gray-700 hover:bg-gray-100 lg:hidden"
+            >
+              <Bars3Icon className="w-6 h-6" />
+            </button>
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -77,36 +85,11 @@ const Navbar = ({ user, onLogout }) => {
               <CogIcon className="w-5 h-5 text-indigo-600" />
             </button>
 
-            {/* User Menu */}
-            <div className="relative group">
-              <button className="flex items-center gap-3 p-2 hover:bg-indigo-50 rounded-lg transition-colors">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900">{user?.name || 'User'}</p>
-                  <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
-                </div>
-                <UserCircleIcon className="w-8 h-8 text-indigo-600" />
+            {currentUser && (
+              <button onClick={handleLogout} className="p-2 hover:bg-indigo-50 rounded-lg transition-colors">
+                <ArrowRightOnRectangleIcon className="w-5 h-5 text-indigo-600" />
               </button>
-
-              {/* Dropdown */}
-              <div className="absolute right-0 mt-2 w-48 bg-white/90 rounded-xl shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                <div className="p-2">
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 rounded-lg transition-colors">
-                    Profile Settings
-                  </button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 rounded-lg transition-colors">
-                    Preferences
-                  </button>
-                  <div className="border-t border-gray-100 mt-2 pt-2">
-                    <button 
-                      onClick={onLogout}
-                      className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

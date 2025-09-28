@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useDataRefresh } from '../DataRefreshContext';
 import {
   CalculatorIcon,
   CurrencyRupeeIcon,
@@ -20,11 +21,12 @@ const TaxCalculator = ({ user }) => {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { refreshCount } = useDataRefresh();
 
   useEffect(() => {
     if (!user?.id) return;
     fetchTaxData();
-  }, [user]);
+  }, [user, refreshCount]);
 
   const fetchTaxData = async () => {
     setLoading(true);

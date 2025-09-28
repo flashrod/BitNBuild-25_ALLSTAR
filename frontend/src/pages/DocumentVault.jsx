@@ -1,4 +1,20 @@
+// --- StatCard Component ---
+const StatCard = ({ title, value, icon: Icon, color = "blue", subtitle = "" }) => (
+  <GlassPanel className="p-6">
+    <div className="flex items-center">
+      <div className={`p-3 rounded-lg bg-${color}-100 text-${color}-600 mr-4`}>
+        <Icon className="h-6 w-6" />
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
+        <p className="text-sm text-gray-600">{title}</p>
+        {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+      </div>
+    </div>
+  </GlassPanel>
+);
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   DocumentArrowUpIcon, 
@@ -23,7 +39,10 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import api from '../api';
 
-const DocumentVault = ({ user }) => {
+
+const DocumentVault = () => {
+  const { currentUser } = useAuth();
+  const getToken = () => currentUser ? currentUser.getIdToken() : Promise.resolve(null);
   // --- State and hooks ---
   const [documents, setDocuments] = useState([]);
   const [reminders, setReminders] = useState([]);
@@ -47,17 +66,22 @@ const DocumentVault = ({ user }) => {
 
   // Guard: Only load if user and user.id exist
   useEffect(() => {
-    if (user && user.id) {
+    if (currentUser && currentUser.uid) {
       loadDocuments();
       loadReminders();
       loadStats();
     }
-  }, [user]);
+  }, [currentUser]);
 
   const loadDocuments = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/vault/${user.id}/documents`);
+      const token = await getToken();
+      const response = await api.get(`/vault/${currentUser.uid}/documents`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setDocuments(response.data.documents || []);
     } catch (error) {
       console.error('Failed to load documents:', error);
@@ -68,7 +92,12 @@ const DocumentVault = ({ user }) => {
 
   const loadReminders = async () => {
     try {
-      const response = await api.get(`/vault/${user.id}/reminders`);
+      const token = await getToken();
+      const response = await api.get(`/vault/${currentUser.uid}/reminders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setReminders(response.data.reminders || []);
     } catch (error) {
       console.error('Failed to load reminders:', error);
@@ -77,57 +106,44 @@ const DocumentVault = ({ user }) => {
 
   const loadStats = async () => {
     try {
-      const response = await api.get(`/vault/${user.id}/stats`);
+      const token = await getToken();
+      const response = await api.get(`/vault/${currentUser.uid}/stats`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setStats(response.data || {});
     } catch (error) {
       console.error('Failed to load stats:', error);
     }
   };
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('document_type', 'other');
-      
-      const response = await api.post(`/vault/${user.id}/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (response.data.success) {
-        await loadDocuments();
-        await loadStats();
-        setShowUploadModal(false);
-      }
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
-    }
-  };
+  // Remove unused handleFileUpload, use UploadModal for uploads
 
   const handleDocumentView = async (document) => {
-    setSelectedDocument(document);
     try {
-      await api.get(`/vault/${user.id}/documents/${document.id}`);
+      const token = await getToken();
+      const response = await api.get(`/vault/${currentUser.uid}/documents/${document.id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setSelectedDocument(response.data);
     } catch (error) {
       console.error('Failed to load document details:', error);
+      alert('Failed to load document details.');
     }
   };
 
   const handleDocumentDownload = async (document) => {
     try {
-      const response = await api.get(`/vault/${user.id}/documents/${document.id}/download`, {
+      const token = await getToken();
+      const response = await api.get(`/vault/${currentUser.uid}/documents/${document.id}/download`, {
         responseType: 'blob',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -146,9 +162,13 @@ const DocumentVault = ({ user }) => {
     if (!confirm(`Are you sure you want to permanently delete "${document.title}"?`)) {
       return;
     }
-
     try {
-      await api.delete(`/vault/${user.id}/documents/${document.id}`);
+      const token = await getToken();
+      await api.delete(`/vault/${currentUser.uid}/documents/${document.id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       await loadDocuments();
       await loadStats();
       setSelectedDocument(null);
@@ -159,59 +179,22 @@ const DocumentVault = ({ user }) => {
   };
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.document_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (doc.tags && doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())));
-    
-    const matchesFilter = filterType === 'all' || doc.document_type === filterType;
-    
+    const title = doc.title || '';
+    const documentType = doc.document_type || '';
+    const tags = Array.isArray(doc.tags) ? doc.tags : [];
+
+    const matchesSearch =
+      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      documentType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.some(tag => (tag || '').toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesFilter = filterType === 'all' || documentType === filterType;
+
     return matchesSearch && matchesFilter;
   });
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active': return 'text-green-600 bg-green-50';
-      case 'expired': return 'text-red-600 bg-red-50';
-      case 'expiring_soon': return 'text-yellow-600 bg-yellow-50';
-      default: return 'text-gray-600 bg-gray-50';
-    }
-  };
-
-  const getDocumentIcon = (docType) => {
-    const type = documentTypes.find(t => t.value === docType);
-    return type ? type.icon : '📄';
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-IN');
-  };
-
-  const StatCard = ({ title, value, icon: Icon, color = "blue", subtitle = "" }) => (
-    <GlassPanel className="p-6">
-      <div className="flex items-center">
-        <div className={`p-3 rounded-lg bg-${color}-100 text-${color}-600 mr-4`}>
-          <Icon className="h-6 w-6" />
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className="text-sm text-gray-600">{title}</p>
-          {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
-        </div>
-      </div>
-    </GlassPanel>
-  );
-
   // === Fallback UI if user not authenticated ===
-  if (!user || !user.id) {
+  if (!currentUser || !currentUser.uid) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
         <div className="max-w-7xl mx-auto">
@@ -417,7 +400,7 @@ const DocumentVault = ({ user }) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <RemindersDashboard reminders={reminders} user={user} />
+              <RemindersDashboard reminders={reminders} user={currentUser} />
             </motion.div>
           )}
 
@@ -435,23 +418,25 @@ const DocumentVault = ({ user }) => {
 
         {/* Modals */}
         <AnimatePresence>
-          {showUploadModal && (
-            <UploadModal
-              user={user}
-              onClose={() => setShowUploadModal(false)}
-              onUploadSuccess={() => {
-                loadDocuments();
-                loadStats();
-                setShowUploadModal(false);
-              }}
-              documentTypes={documentTypes}
-            />
-          )}
+            {showUploadModal && (
+              <UploadModal
+                userId={currentUser?.uid}
+                getToken={getToken}
+                onClose={() => setShowUploadModal(false)}
+                onUploadSuccess={() => {
+                  loadDocuments();
+                  loadStats();
+                  setShowUploadModal(false);
+                }}
+                documentTypes={documentTypes}
+                formatFileSize={formatFileSize}
+              />
+            )}
 
           {selectedDocument && (
             <DocumentDetailsModal
               document={selectedDocument}
-              user={user}
+              user={currentUser}
               onClose={() => setSelectedDocument(null)}
               onDelete={handleDocumentDelete}
               onDownload={handleDocumentDownload}
@@ -654,7 +639,7 @@ const InsightsDashboard = ({ stats, documents }) => {
 };
 
 // Upload Modal Component - FIXED
-const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
+const UploadModal = ({ userId, getToken, onClose, onUploadSuccess, documentTypes, formatFileSize }) => {
   const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -699,9 +684,11 @@ const UploadModal = ({ user, onClose, onUploadSuccess, documentTypes }) => {
         }
       });
 
-      const response = await api.post(`/vault/${user.id}/upload`, submitData, {
+      const token = await getToken();
+      const response = await api.post(`/vault/${userId}/upload`, submitData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -1094,6 +1081,28 @@ const DocumentDetailsModal = ({ document, user, onClose, onDelete, onDownload })
       </motion.div>
     </motion.div>
   );
+};
+
+export const getStatusColor = (status) => {
+  switch (status) {
+    case 'active': return 'text-green-600 bg-green-50';
+    case 'expired': return 'text-red-600 bg-red-50';
+    case 'expiring_soon': return 'text-yellow-600 bg-yellow-50';
+    default: return 'text-gray-600 bg-gray-50';
+  }
+};
+
+export const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+export const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  return new Date(dateString).toLocaleDateString('en-IN');
 };
 
 export default DocumentVault;

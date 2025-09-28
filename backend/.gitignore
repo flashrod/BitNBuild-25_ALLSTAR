@@ -54,3 +54,4 @@ tmp/
 
 
 venv/
+firebase-adminsdk.json

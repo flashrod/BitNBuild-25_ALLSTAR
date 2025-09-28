@@ -1,4 +1,7 @@
 from fastapi import FastAPI
+import motor.motor_asyncio
+from beanie import init_beanie
+import asyncio
 from app.services.debt_service import DebtService
 from app.models.debt import Debt
 from fastapi import APIRouter, UploadFile, File, Form
@@ -41,6 +44,7 @@ from app.services.cibil_advisor import CIBILAdvisor
 from app.services.file_parser import FileParser
 from app.services.document_vault_service import DocumentVaultService
 from app.deps.auth import get_current_user
+
 # Tax report endpoint (AIS/TIS + Capital Gains integration)
 async def generate_tax_report_api(
     user_id: str,
@@ -111,9 +115,12 @@ import uuid
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
+
 # Load environment variables
 load_dotenv()
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+MONGODB_ATLAS_URI = os.getenv("MONGODB_ATLAS_URI")  # Add this to your .env file
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -121,6 +128,37 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG
 )
+
+import logging
+# MongoDB Atlas + Beanie ODM setup
+async def init_db():
+    client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_ATLAS_URI)
+    from app.models.database import User, Document, DocumentReminder
+    await init_beanie(database=client.get_default_database(), document_models=[User, Document, DocumentReminder])
+    logging.info("MongoDB connected!")
+    print("MongoDB connected!")
+
+from pydantic import EmailStr
+# Run DB init on startup
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
+    # Ensure mock user exists
+    mock_email = "demo@taxwise.com"
+    mock_password = "demo123"
+    existing = await User.find_one(User.email == EmailStr(mock_email))
+    if not existing:
+        user = User(
+            email=mock_email,
+            name="Demo User",
+            phone="0000000000",
+            pan_number="DEMO12345P",
+            created_at=datetime.now()
+        )
+        await user.insert()
+        print(f"Mock user created: {mock_email} / {mock_password}")
+    else:
+        print(f"Mock user exists: {mock_email} / {mock_password}")
 
 # Register debt router on the final app instance
 app.include_router(debt_router)
@@ -184,36 +222,8 @@ cibil_advisor = CIBILAdvisor()
 file_parser = FileParser()
 document_vault = DocumentVaultService()
 
-# In-memory storage (replace with actual database in production)
-users_db = {}
-transactions_db = {}
-tax_data_db = {}
-cibil_data_db = {}
-documents_db = {}  # Document vault storage
-reminders_db = {}  # Document reminders storage
 
-# Initialize mock user for development
-mock_user_id = 'mock-user-id'
-mock_user = User(
-    id=mock_user_id,
-    email='mock@user.com',
-    name='Mock User',
-    phone='1234567890',
-    pan_number='MOCK12345P',
-    created_at=datetime.now()
-)
-users_db[mock_user_id] = mock_user
-transactions_db[mock_user_id] = []
-tax_data_db[mock_user_id] = TaxData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id,
-    tax_year=settings.TAX_YEAR,
-    gross_income=0
-)
-cibil_data_db[mock_user_id] = CIBILData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id
-)
+# Remove in-memory storage, use Beanie ODM for persistent storage
 
 # Root endpoint
 @app.get("/")
@@ -236,57 +246,36 @@ async def root():
 async def register(user_data: UserCreate):
     """Register a new user"""
     # Check if user already exists
-    if any(u.email == user_data.email for u in users_db.values()):
+    existing = await User.find_one(User.email == user_data.email)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
     # Create new user
-    user_id = str(uuid.uuid4())
     user = User(
-        id=user_id,
         email=user_data.email,
         name=user_data.name,
         phone=user_data.phone,
         pan_number=user_data.pan_number,
         created_at=datetime.now()
     )
-    
-    users_db[user_id] = user
-    transactions_db[user_id] = []
-    
-    # Initialize tax and CIBIL data
-    tax_data_db[user_id] = TaxData(
-        id=str(uuid.uuid4()),
-        user_id=user_id,
-        tax_year=settings.TAX_YEAR,
-        gross_income=0
-    )
-    
-    cibil_data_db[user_id] = CIBILData(
-        id=str(uuid.uuid4()),
-        user_id=user_id
-    )
-    
-    return {"message": "User registered successfully", "user_id": user_id}
+    await user.insert()
+    return {"message": "User registered successfully", "user_id": str(user.id)}
 
 @app.post("/auth/login")
 async def login(credentials: UserLogin):
     """Login user"""
-    # Find user by email
-    user = next((u for u in users_db.values() if u.email == credentials.email), None)
-    
+    user = await User.find_one(User.email == credentials.email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
-    
     return {
         "message": "Login successful",
-        "user_id": user.id,
-        "access_token": "mock_token_" + user.id  # In production, use proper JWT
+        "user_id": str(user.id),
+        "access_token": "mock_token_" + str(user.id)  # Replace with Clerk JWT
     }
 
 # File upload endpoint
@@ -595,6 +584,7 @@ async def get_dashboard(user_id: str):
 
 # Document Vault API Endpoints
 @app.post("/vault/{user_id}/upload")
+@app.post("/api/vault/{user_id}/upload")
 async def upload_document(
     user_id: str,
     file: UploadFile = File(...),
@@ -607,54 +597,49 @@ async def upload_document(
     document_number: Optional[str] = Form(None)
 ):
     """Upload a document to the secure vault"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
     try:
-        # Parse dates if provided
         parsed_issue_date = None
         parsed_expiry_date = None
-        
         if issue_date:
             try:
                 parsed_issue_date = datetime.fromisoformat(issue_date.replace('Z', '+00:00'))
             except ValueError:
                 pass
-        
         if expiry_date:
             try:
                 parsed_expiry_date = datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
             except ValueError:
                 pass
-        
-        # Parse tags
-        parsed_tags = []
-        if tags:
-            parsed_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
-        
-        # Upload document
-        document = await document_vault.upload_document(
+        parsed_tags = [tag.strip() for tag in tags.split(',') if tag.strip()] if tags else []
+        # Save file to disk or cloud, get storage_path (implement as needed)
+        storage_path = f"/vault/{user_id}/{file.filename}"  # Placeholder
+        content = await file.read()
+        # TODO: Save file content to storage_path
+        document = Document(
             user_id=user_id,
-            file=file,
+            title=title or file.filename,
             document_type=document_type,
-            title=title,
-            description=description,
-            tags=parsed_tags,
+            file_name=file.filename,
+            file_size=len(content),
+            file_type=file.content_type,
+            document_number=document_number,
             issue_date=parsed_issue_date,
             expiry_date=parsed_expiry_date,
-            document_number=document_number
+            tags=parsed_tags,
+            description=description,
+            storage_path=storage_path,
+            created_at=datetime.now(),
+            status=DocumentStatus.ACTIVE
         )
-        
-        # Store in memory (in production, save to database)
-        if user_id not in documents_db:
-            documents_db[user_id] = []
-        documents_db[user_id].append(document)
-        
+        await document.insert()
         return {
             "message": "Document uploaded successfully",
-            "document_id": document.id,
+            "document_id": str(document.id),
             "document": {
-                "id": document.id,
+                "id": str(document.id),
                 "title": document.title,
                 "document_type": document.document_type,
                 "file_name": document.file_name,
@@ -668,6 +653,7 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vault/{user_id}/documents")
+@app.get("/api/vault/{user_id}/documents")
 async def list_documents(
     user_id: str,
     document_type: Optional[DocumentType] = None,
@@ -676,26 +662,20 @@ async def list_documents(
     offset: int = 0
 ):
     """List user's documents with optional filtering"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
-    
-    # Apply filters
+    query = Document.find(Document.user_id == user_id)
     if document_type:
-        user_documents = [doc for doc in user_documents if doc.document_type == document_type]
+        query = query.find(Document.document_type == document_type)
     if status:
-        user_documents = [doc for doc in user_documents if doc.status == status]
-    
-    # Apply pagination
-    total = len(user_documents)
-    documents = user_documents[offset:offset + limit]
-    
-    # Format response
+        query = query.find(Document.status == status)
+    total = await query.count()
+    documents = await query.skip(offset).limit(limit).to_list()
     formatted_docs = []
     for doc in documents:
         formatted_docs.append({
-            "id": doc.id,
+            "id": str(doc.id),
             "title": doc.title,
             "document_type": doc.document_type,
             "file_name": doc.file_name,
@@ -708,7 +688,6 @@ async def list_documents(
             "created_at": doc.created_at.isoformat() if doc.created_at else None,
             "access_count": doc.access_count
         })
-    
     return {
         "documents": formatted_docs,
         "total": total,
@@ -717,22 +696,18 @@ async def list_documents(
     }
 
 @app.get("/vault/{user_id}/documents/{document_id}")
+@app.get("/api/vault/{user_id}/documents/{document_id}")
 async def get_document_details(user_id: str, document_id: str):
     """Get detailed information about a document"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
-    document = next((doc for doc in user_documents if doc.id == document_id), None)
-    
-    if not document:
+    document = await Document.get(document_id)
+    if not document or document.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Get AI insights
     insights = await document_vault.get_document_insights(user_id, document_id)
-    
     return {
-        "id": document.id,
+        "id": str(document.id),
         "title": document.title,
         "document_type": document.document_type,
         "file_name": document.file_name,
@@ -752,28 +727,22 @@ async def get_document_details(user_id: str, document_id: str):
     }
 
 @app.get("/vault/{user_id}/documents/{document_id}/download")
+@app.get("/api/vault/{user_id}/documents/{document_id}/download")
 async def download_document(user_id: str, document_id: str):
     """Download a document (returns file content)"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
-    document = next((doc for doc in user_documents if doc.id == document_id), None)
-    
-    if not document:
+    document = await Document.get(document_id)
+    if not document or document.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found")
-    
     try:
-        # Get document content
         content = await document_vault.get_document_content(user_id, document_id)
-        
-        # Update access count
         document.access_count += 1
         document.accessed_at = datetime.now()
-        
+        await document.save()
         from fastapi.responses import StreamingResponse
         import io
-        
         return StreamingResponse(
             io.BytesIO(content),
             media_type=document.file_type,
@@ -785,29 +754,24 @@ async def download_document(user_id: str, document_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/vault/{user_id}/documents/{document_id}")
+@app.delete("/api/vault/{user_id}/documents/{document_id}")
 async def delete_document(user_id: str, document_id: str):
     """Delete a document permanently"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
-    document = next((doc for doc in user_documents if doc.id == document_id), None)
-    
-    if not document:
+    document = await Document.get(document_id)
+    if not document or document.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found")
-    
     try:
-        # Delete from storage
         await document_vault.delete_document(user_id, document_id)
-        
-        # Remove from memory
-        documents_db[user_id].remove(document)
-        
+        await document.delete()
         return {"message": "Document deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vault/{user_id}/search")
+@app.get("/api/vault/{user_id}/search")
 async def search_documents(
     user_id: str,
     query: Optional[str] = None,
@@ -817,54 +781,32 @@ async def search_documents(
     date_to: Optional[str] = None
 ):
     """Search documents with various filters"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
+    beanie_query = Document.find(Document.user_id == user_id)
+    if document_type:
+        beanie_query = beanie_query.find(Document.document_type == document_type)
+    if tags:
+        tag_list = [tag.strip() for tag in tags.split(',')]
+        beanie_query = beanie_query.find(Document.tags.in_(tag_list))
+    if date_from:
+        from_date = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+        beanie_query = beanie_query.find(Document.created_at >= from_date)
+    if date_to:
+        to_date = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+        beanie_query = beanie_query.find(Document.created_at <= to_date)
+    documents = await beanie_query.to_list()
     results = []
-    
-    for doc in user_documents:
+    for doc in documents:
         include = True
-        
-        # Text search in title, description, and extracted text
         if query:
             search_text = f"{doc.title} {doc.description or ''} {doc.extracted_text or ''}".lower()
             if query.lower() not in search_text:
                 include = False
-        
-        # Document type filter
-        if document_type and doc.document_type != document_type:
-            include = False
-        
-        # Tags filter
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(',')]
-            if not any(tag in doc.tags for tag in tag_list):
-                include = False
-        
-        # Date range filter
-        if date_from or date_to:
-            doc_date = doc.created_at
-            if doc_date:
-                if date_from:
-                    try:
-                        from_date = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
-                        if doc_date < from_date:
-                            include = False
-                    except ValueError:
-                        pass
-                
-                if date_to:
-                    try:
-                        to_date = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
-                        if doc_date > to_date:
-                            include = False
-                    except ValueError:
-                        pass
-        
         if include:
             results.append({
-                "id": doc.id,
+                "id": str(doc.id),
                 "title": doc.title,
                 "document_type": doc.document_type,
                 "file_name": doc.file_name,
@@ -873,7 +815,6 @@ async def search_documents(
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "expiry_date": doc.expiry_date.isoformat() if doc.expiry_date else None
             })
-    
     return {
         "results": results,
         "total": len(results),
@@ -881,23 +822,20 @@ async def search_documents(
     }
 
 @app.get("/vault/{user_id}/reminders")
+@app.get("/api/vault/{user_id}/reminders")
 async def get_document_reminders(user_id: str, active_only: bool = True):
     """Get document reminders for user"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_reminders = reminders_db.get(user_id, [])
-    
+    query = DocumentReminder.find(DocumentReminder.user_id == user_id)
     if active_only:
-        user_reminders = [r for r in user_reminders if r.is_active and not r.is_completed]
-    
-    # Sort by reminder date
-    user_reminders.sort(key=lambda r: r.reminder_date)
-    
+        query = query.find(DocumentReminder.is_active == True, DocumentReminder.is_completed == False)
+    reminders = await query.sort(DocumentReminder.reminder_date).to_list()
     formatted_reminders = []
-    for reminder in user_reminders:
+    for reminder in reminders:
         formatted_reminders.append({
-            "id": reminder.id,
+            "id": str(reminder.id),
             "title": reminder.title,
             "description": reminder.description,
             "reminder_type": reminder.reminder_type,
@@ -908,24 +846,23 @@ async def get_document_reminders(user_id: str, active_only: bool = True):
             "document_id": reminder.document_id,
             "ai_priority_score": reminder.ai_priority_score
         })
-    
     return {
         "reminders": formatted_reminders,
         "total": len(formatted_reminders)
     }
 
 @app.post("/vault/{user_id}/reminders")
+@app.post("/api/vault/{user_id}/reminders")
 async def create_custom_reminder(
     user_id: str,
     reminder_data: Dict
 ):
     """Create a custom reminder"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
     try:
         reminder = DocumentReminder(
-            id=str(uuid.uuid4()),
             user_id=user_id,
             title=reminder_data.get("title"),
             description=reminder_data.get("description"),
@@ -935,61 +872,45 @@ async def create_custom_reminder(
             is_active=True,
             created_at=datetime.now()
         )
-        
-        if user_id not in reminders_db:
-            reminders_db[user_id] = []
-        reminders_db[user_id].append(reminder)
-        
+        await reminder.insert()
         return {
             "message": "Reminder created successfully",
-            "reminder_id": reminder.id
+            "reminder_id": str(reminder.id)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/vault/{user_id}/stats")
+@app.get("/api/vault/{user_id}/stats")
 async def get_vault_statistics(user_id: str):
     """Get document vault statistics"""
-    if user_id not in users_db:
+    user = await User.get(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    user_documents = documents_db.get(user_id, [])
-    user_reminders = reminders_db.get(user_id, [])
-    
-    # Storage stats
+    user_documents = await Document.find(Document.user_id == user_id).to_list()
+    user_reminders = await DocumentReminder.find(DocumentReminder.user_id == user_id).to_list()
     storage_stats = await document_vault.get_storage_stats(user_id)
-    
-    # Document type breakdown
     type_breakdown = {}
     status_breakdown = {}
-    
     for doc in user_documents:
         doc_type = doc.document_type.value
         doc_status = doc.status.value
-        
         type_breakdown[doc_type] = type_breakdown.get(doc_type, 0) + 1
         status_breakdown[doc_status] = status_breakdown.get(doc_status, 0) + 1
-    
-    # Upcoming reminders
     upcoming_reminders = [
         r for r in user_reminders 
         if r.is_active and not r.is_completed and r.reminder_date > datetime.now()
     ]
     upcoming_reminders.sort(key=lambda r: r.reminder_date)
-    
-    # Expired documents
     expired_docs = [
         doc for doc in user_documents 
         if doc.expiry_date and doc.expiry_date < datetime.now()
     ]
-    
-    # Expiring soon (next 30 days)
     expiring_soon = [
         doc for doc in user_documents 
         if doc.expiry_date and 
            datetime.now() < doc.expiry_date <= (datetime.now() + timedelta(days=30))
     ]
-    
     return {
         "storage": storage_stats,
         "document_counts": {

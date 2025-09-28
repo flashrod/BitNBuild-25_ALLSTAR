@@ -58,26 +58,22 @@ const CapitalGainsAnalyzer = () => {
   };
 
   // Chart data helpers
-  const gainDistribution = Object.values(
-    gains.reduce((acc, g) => {
-      const key = g.instrument || "Other";
-      acc[key] = (acc[key] || 0) + parseFloat(g.gain_loss || 0);
-      return acc;
-    }, {})
-  ).map((val, idx, arr) => ({ name: Object.keys(arr)[idx], value: val }));
-
   const instrumentData = Object.entries(
     gains.reduce((acc, g) => {
       const key = g.instrument || "Other";
-      acc[key] = (acc[key] || 0) + parseFloat(g.gain_loss || 0);
+      const gainValue = parseFloat(g.gain_loss || g["Gain/Loss"] || 0);
+      acc[key] = (acc[key] || 0) + gainValue;
       return acc;
     }, {})
   ).map(([name, value]) => ({ name, value }));
 
-  const timelineData = gains.map((g) => ({
-    date: g.trade_date,
-    gain: Number(g.gain_loss) || 0,
-  }));
+  const timelineData = gains
+    .map((g) => ({
+      date: g.trade_date || g["Trade Date"],
+      gain: parseFloat(g.gain_loss || g["Gain/Loss"] || 0),
+    }))
+    .filter(item => item.date && !isNaN(item.gain))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const COLORS = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6", "#a78bfa", "#f472b6"];
 
@@ -127,7 +123,11 @@ const CapitalGainsAnalyzer = () => {
             <span>Gain Distribution by Instrument</span>
           </h2>
           {instrumentData.length === 0 ? (
-            <p className="text-gray-500">No data to display.</p>
+            <div className="text-center py-8">
+              <ChartBarIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-2">No capital gains data available</p>
+              <p className="text-sm text-gray-400">Upload a CSV file to see your capital gains analysis</p>
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={instrumentData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -147,7 +147,11 @@ const CapitalGainsAnalyzer = () => {
             <span>Gain/Loss Timeline</span>
           </h2>
           {timelineData.length === 0 ? (
-            <p className="text-gray-500">No data to display.</p>
+            <div className="text-center py-8">
+              <ChartBarIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-2">No timeline data available</p>
+              <p className="text-sm text-gray-400">Upload a CSV file to see your gains timeline</p>
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={timelineData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
@@ -188,14 +192,14 @@ const CapitalGainsAnalyzer = () => {
                 <tbody>
                   {gains.map((g, idx) => (
                     <tr key={idx} className="border-b border-gray-100">
-                      <td className="px-3 py-2">{g.trade_date}</td>
-                      <td className="px-3 py-2">{g.type}</td>
-                      <td className="px-3 py-2">{g.instrument}</td>
-                      <td className="px-3 py-2 text-right">{g.quantity}</td>
-                      <td className="px-3 py-2 text-right">{g.buy_price}</td>
-                      <td className="px-3 py-2 text-right">{g.sell_price}</td>
-                      <td className="px-3 py-2 text-right">{g.gain_loss}</td>
-                      <td className="px-3 py-2 text-right">{g.holding_period}</td>
+                      <td className="px-3 py-2">{g.trade_date || g["Trade Date"]}</td>
+                      <td className="px-3 py-2">{g.type || g["Type"]}</td>
+                      <td className="px-3 py-2">{g.instrument || g["Instrument"]}</td>
+                      <td className="px-3 py-2 text-right">{g.quantity || g["Quantity"]}</td>
+                      <td className="px-3 py-2 text-right">{g.buy_price || g["Buy Price"]}</td>
+                      <td className="px-3 py-2 text-right">{g.sell_price || g["Sell Price"]}</td>
+                      <td className="px-3 py-2 text-right">{g.gain_loss || g["Gain/Loss"]}</td>
+                      <td className="px-3 py-2 text-right">{g.holding_period || g["Holding Period"]}</td>
                     </tr>
                   ))}
                 </tbody>

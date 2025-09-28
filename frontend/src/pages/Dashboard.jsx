@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDataRefresh } from '../DataRefreshContext';
 import { motion } from 'framer-motion';
 import Chatbot from '../components/ChatBot';
 import {
@@ -41,10 +42,11 @@ const Dashboard = ({ user }) => {
   const [cibilRecs, setCibilRecs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { refreshCount } = useDataRefresh();
 
   useEffect(() => {
     fetchAllData();
-  }, [user]);
+  }, [user, refreshCount]);
 
   const fetchAllData = async () => {
     setLoading(true);

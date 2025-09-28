@@ -44,18 +44,21 @@ class CapitalGainsParser:
             df = pd.read_csv(StringIO(file_content.decode('utf-8')))
         else:
             df = pd.read_excel(BytesIO(file_content))
-        df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
+        
+        # Normalize column names
+        df.columns = [c.strip().lower().replace(' ', '_').replace('/', '_') for c in df.columns]
+        
         gains = []
         for _, row in df.iterrows():
             gains.append(CapitalGain(
-                trade_date=row.get('trade_date', ''),
-                type=row.get('type', ''),
-                instrument=row.get('instrument', ''),
-                quantity=row.get('quantity', 0),
-                buy_price=row.get('buy_price', 0),
-                sell_price=row.get('sell_price', 0),
-                gain_loss=row.get('gain_loss', 0),
-                holding_period=row.get('holding_period', 0)
+                trade_date=str(row.get('trade_date', '')),
+                type=str(row.get('type', '')),
+                instrument=str(row.get('instrument', '')),
+                quantity=float(row.get('quantity', 0)),
+                buy_price=float(row.get('buy_price', 0)),
+                sell_price=float(row.get('sell_price', 0)),
+                gain_loss=float(row.get('gain_loss', 0)),
+                holding_period=int(row.get('holding_period', 0))
             ))
         return gains
 

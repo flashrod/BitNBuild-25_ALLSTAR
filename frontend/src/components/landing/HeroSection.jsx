@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
@@ -33,11 +34,7 @@ const transitionVariants = {
 };
 
 export default function HeroSection() {
-  const navigate = useNavigate();
-
-  const handleGetStarted = () => {
-    navigate('/login');
-  };
+  // Removed navigate and handleGetStarted, using <Link> for navigation instead
 
   const handleLearnMore = () => {
     const element = document.querySelector('#features');
@@ -87,13 +84,14 @@ export default function HeroSection() {
                   <div
                     key={1}
                     className="bg-gray-100 rounded-xl border p-0.5">
-                    <Button
-                      size="lg"
-                      onClick={handleGetStarted}
-                      className="rounded-xl px-5 text-base bg-primary-600 hover:bg-primary-700">
-                      <span className="text-nowrap">Get Started</span>
-                      <ChevronRight className="ml-2 w-4 h-4" />
-                    </Button>
+                    <Link to="/login" style={{ textDecoration: 'none' }}>
+                      <Button
+                        size="lg"
+                        className="rounded-xl px-5 text-base bg-primary-600 hover:bg-primary-700">
+                        <span className="text-nowrap">Get Started</span>
+                        <ChevronRight className="ml-2 w-4 h-4" />
+                      </Button>
+                    </Link>
                   </div>
                   <Button
                     key={2}

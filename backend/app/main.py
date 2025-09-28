@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import List, Dict, Optional
 import uuid
 from datetime import datetime
@@ -18,10 +18,30 @@ from app.services.cibil_advisor import CIBILAdvisor
 from app.services.file_parser import FileParser
 from app.deps.auth import get_current_user
 from app.services.capital_gains_service import CapitalGainsService
+from app.db import init_db, close_db
+
+
+from app.services.document_vault_service import DocumentVaultService
+from app.services.chatbot import ask_gemini
+import firebase_admin
+from firebase_admin import credentials, auth
+
+# Initialize Firebase Admin SDK
+try:
+    cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+    firebase_admin.initialize_app(cred, {
+        'storageBucket': os.getenv("FIREBASE_STORAGE_BUCKET")
+    })
+    print("Firebase Admin SDK initialized successfully.")
+except Exception as e:
+    print(f"Error initializing Firebase Admin SDK: {e}")
 
 # Load environment variables
 load_dotenv()
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+# MongoDB connected log for local dev clarity
+print("MongoDB connected! (local dev stub)")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -30,34 +50,70 @@ app = FastAPI(
     debug=settings.DEBUG
 )
 
+# In-memory storage (replace with actual database in production)
+user_debts: Dict = {}
+users_db: Dict = {}
+transactions_db: Dict = {}
+tax_data_db: Dict = {}
+cibil_data_db: Dict = {}
+user_gains: Dict = {}
+
+@app.on_event("startup")
+async def on_startup():
+    global users_db, transactions_db, tax_data_db, cibil_data_db
+    await init_db()
+    # Initialize mock user for development (only once)
+    mock_user_id = 'mock-user-id'
+    mock_user = {
+        'id': mock_user_id,
+        'email': 'mock@user.com',
+        'name': 'Mock User',
+        'phone': '1234567890',
+        'pan_number': 'MOCK12345P',
+        'created_at': datetime.now()
+    }
+    users_db[mock_user_id] = mock_user
+    transactions_db[mock_user_id] = []
+    tax_data_db[mock_user_id] = TaxData(
+        id=str(uuid.uuid4()),
+        user_id=mock_user_id,
+        tax_year=settings.TAX_YEAR,
+        gross_income=0
+    )
+    cibil_data_db[mock_user_id] = CIBILData(
+        id=str(uuid.uuid4()),
+        user_id=mock_user_id
+    )
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await close_db()
+
 # Configure CORS
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize servicesfrom app.services.chatbot import ask_gemini
-
+# Initialize services
 debt_service = DebtService()
 tax_calculator = TaxCalculator()
 cibil_advisor = CIBILAdvisor()
 file_parser = FileParser()
 capital_gains_service = CapitalGainsService()
-
-# In-memory storage (replace with actual database in production)
-user_debts = {}
-users_db = {}
-transactions_db = {}
-tax_data_db = {}
-cibil_data_db = {}
-user_gains = {}
+document_vault_service = DocumentVaultService()
 
 # Routers
 debt_router = APIRouter()
 capital_gains_router = APIRouter()
+vault_router = APIRouter(prefix="/api/vault")
 
 # Debt endpoints
 @debt_router.post('/debt/ingest')
@@ -99,198 +155,6 @@ async def analyze_gains(user_id: str = Form(...)):
 # Register routers
 app.include_router(debt_router)
 app.include_router(capital_gains_router)
-
-# Initialize mock user for development
-mock_user_id = 'mock-user-id'
-mock_user = User(
-    id=mock_user_id,
-    email='mock@user.com',
-    name='Mock User',
-    phone='1234567890',
-    pan_number='MOCK12345P',
-    created_at=datetime.now()
-)
-users_db[mock_user_id] = mock_user
-transactions_db[mock_user_id] = []
-tax_data_db[mock_user_id] = TaxData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id,
-    tax_year=settings.TAX_YEAR,
-    gross_income=0
-)
-cibil_data_db[mock_user_id] = CIBILData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id
-)
-
-# Root endpoint
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to TaxWise API",
-        "version": settings.APP_VERSION,
-        "endpoints": {
-            "auth": "/auth",
-            "upload": "/upload",
-            "tax": "/tax",
-            "cibil": "/cibil",
-            "dashboard": "/dashboard"
-        }
-    }
-
-# Authentication endpoints
-@app.post("/auth/register")
-async def register(user_data: UserCreate):
-    # ...existing code...
-    async def generate_tax_report_api(
-        user_id: str,
-        ais_file: UploadFile = File(None),
-        broker_file: UploadFile = File(None),
-        asset_type: str = "equity"
-    ):
-        """
-        Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
-        """
-        if user_id not in users_db:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        # Get user transactions
-        user_transactions = transactions_db.get(user_id, [])
-
-        # Parse AIS/TIS transactions
-        ais_transactions = []
-        if ais_file:
-            ext = ais_file.filename.split('.')[-1].lower()
-            content = await ais_file.read()
-            if ext == "json":
-                ais_transactions = file_parser.parse_ais_json(content, ais_file.filename)
-            elif ext == "csv":
-                ais_transactions = file_parser.parse_ais_csv(content, ais_file.filename)
-            # Add PDF support if needed
-
-        # Parse broker capital gains transactions
-        capital_gains = []
-        if broker_file:
-            ext = broker_file.filename.split('.')[-1].lower()
-            content = await broker_file.read()
-            capital_gains = file_parser.parse_broker_csv(content, broker_file.filename)
-
-        # Generate tax report
-        report = file_parser.generate_tax_report(
-            user_transactions=user_transactions,
-            ais_transactions=ais_transactions,
-            capital_gains=capital_gains,
-            asset_type=asset_type
-        )
-        return JSONResponse(content=report)
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from typing import List, Dict, Optional
-import uuid
-from datetime import datetime
-import os
-from dotenv import load_dotenv
-# Load environment variables
-load_dotenv()
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
-
-# Initialize FastAPI app
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    debug=settings.DEBUG
-)
-
-# Register debt router on the final app instance
-app.include_router(debt_router)
-
-# Tax report endpoint (AIS/TIS + Capital Gains integration)
-@app.post("/api/tax-report/{user_id}")
-async def generate_tax_report_api(
-    user_id: str,
-    ais_file: UploadFile = File(None),
-    broker_file: UploadFile = File(None),
-    asset_type: str = "equity"
-):
-    """
-    Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
-    """
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Get user transactions
-    user_transactions = transactions_db.get(user_id, [])
-
-    # Parse AIS/TIS transactions
-    ais_transactions = []
-    if ais_file:
-        ext = ais_file.filename.split('.')[-1].lower()
-        content = await ais_file.read()
-        if ext == "json":
-            ais_transactions = file_parser.parse_ais_json(content, ais_file.filename)
-        elif ext == "csv":
-            ais_transactions = file_parser.parse_ais_csv(content, ais_file.filename)
-        # Add PDF support if needed
-
-    # Parse broker capital gains transactions
-    capital_gains = []
-    if broker_file:
-        ext = broker_file.filename.split('.')[-1].lower()
-        content = await broker_file.read()
-        capital_gains = file_parser.parse_broker_csv(content, broker_file.filename)
-
-    # Generate tax report
-    report = file_parser.generate_tax_report(
-        user_transactions=user_transactions,
-        ais_transactions=ais_transactions,
-        capital_gains=capital_gains,
-        asset_type=asset_type
-    )
-    return JSONResponse(content=report)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize services
-tax_calculator = TaxCalculator()
-cibil_advisor = CIBILAdvisor()
-file_parser = FileParser()
-
-# In-memory storage (replace with actual database in production)
-users_db = {}
-transactions_db = {}
-tax_data_db = {}
-cibil_data_db = {}
-
-# Initialize mock user for development
-mock_user_id = 'mock-user-id'
-mock_user = User(
-    id=mock_user_id,
-    email='mock@user.com',
-    name='Mock User',
-    phone='1234567890',
-    pan_number='MOCK12345P',
-    created_at=datetime.now()
-)
-users_db[mock_user_id] = mock_user
-transactions_db[mock_user_id] = []
-tax_data_db[mock_user_id] = TaxData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id,
-    tax_year=settings.TAX_YEAR,
-    gross_income=0
-)
-cibil_data_db[mock_user_id] = CIBILData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id
-)
 
 # Root endpoint
 @app.get("/")
@@ -679,31 +543,95 @@ async def read_user_profile(current_user: dict = Depends(get_current_user)):
     # Example: Fetch user-specific data using current_user["id"]
     return {"message": "Authenticated!", "user_id": current_user["id"]}
 
-from app.services.capital_gains_service import CapitalGainsService
-from fastapi import APIRouter, UploadFile, File, Form
+@vault_router.get("/{user_id}/documents")
+async def get_documents(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return await document_vault_service.get_documents(user_id)
 
-capital_gains_service = CapitalGainsService()
-capital_gains_router = APIRouter()
-user_gains = {}
+@vault_router.get("/{user_id}/stats")
+async def get_stats(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return await document_vault_service.get_stats(user_id)
 
-@capital_gains_router.post('/capital_gains/ingest')
-async def ingest_gains(user_id: str = Form(...), file: UploadFile = File(...)):
-    content = await file.read()
-    gains = capital_gains_service.ingest(user_id, content, file.filename)
-    user_gains[user_id] = gains
-    return {'success': True, 'count': len(gains)}
+@vault_router.post("/{user_id}/upload")
+async def upload_document(
+    user_id: str,
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    document_type: str = Form(...),
+    description: str = Form(""),
+    tags: str = Form(""),
+    issue_date: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    document_number: str = Form(""),
+    current_user: dict = Depends(get_current_user)
+):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-@capital_gains_router.get('/capital_gains/list')
-async def list_gains(user_id: str):
-    gains = user_gains.get(user_id, [])
-    return {'gains': [vars(g) for g in gains]}
+    # Convert date strings to datetime objects or None
+    issue_date_dt = datetime.fromisoformat(issue_date) if issue_date else None
+    expiry_date_dt = datetime.fromisoformat(expiry_date) if expiry_date else None
+    
+    # Split tags string into a list
+    tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
 
-@capital_gains_router.post('/capital_gains/analyze')
-async def analyze_gains(user_id: str = Form(...)):
-    result = capital_gains_service.analyze(user_id)
-    return result
+    return await document_vault_service.upload_document(
+        user_id=user_id,
+        file=file,
+        title=title,
+        document_type=document_type,
+        description=description,
+        tags=tag_list,
+        issue_date=issue_date_dt,
+        expiry_date=expiry_date_dt,
+        document_number=document_number
+    )
 
-app.include_router(capital_gains_router)
+@vault_router.get("/{user_id}/documents/{doc_id}")
+async def get_document_details(user_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    doc = await document_vault_service.get_document_details(user_id, doc_id)
+    if not doc:
+        return JSONResponse(status_code=404, content={"message": "Document not found"})
+    return doc
+
+@vault_router.get("/{user_id}/documents/{doc_id}/download")
+async def download_document(user_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    download_stream = await document_vault_service.download_document(user_id, doc_id)
+    if not download_stream:
+        return JSONResponse(status_code=404, content={"message": "Document not found or download failed"})
+    
+    doc_details = await document_vault_service.get_document_details(user_id, doc_id)
+    
+    return StreamingResponse(
+        download_stream,
+        media_type=doc_details.get("file_type", "application/octet-stream"),
+        headers={"Content-Disposition": f"attachment; filename=\"{doc_details.get('file_name', 'document')}\""}
+    )
+
+@vault_router.delete("/{user_id}/documents/{doc_id}")
+async def delete_document(user_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    success = await document_vault_service.delete_document(user_id, doc_id)
+    if not success:
+        return JSONResponse(status_code=404, content={"message": "Document not found"})
+    return {"success": True}
+
+@vault_router.get("/{user_id}/reminders")
+async def get_reminders(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id != current_user["uid"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return await document_vault_service.get_reminders(user_id)
+
+app.include_router(vault_router)
+
 
 # Chatbot endpoint for dashboard.
 @app.post("/chat")

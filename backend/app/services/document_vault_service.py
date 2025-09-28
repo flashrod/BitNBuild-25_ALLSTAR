@@ -15,9 +15,13 @@ import base64
 
 from app.models.database import (
     Document, DocumentType, DocumentStatus, DocumentReminder, 
-    DocumentExtraction, DocumentAuditLog, ReminderType
+    DocumentAuditLog, ReminderType, DocumentExtraction
 )
 from app.services.ai_document_processor import AIDocumentProcessor
+
+import firebase_admin
+from firebase_admin import credentials, storage
+from beanie import Document as BeanieDocument
 
 
 class DocumentVaultService:
@@ -26,6 +30,12 @@ class DocumentVaultService:
     """
     
     def __init__(self, storage_path: str = "storage/documents", encryption_key: Optional[str] = None):
+        # Firebase Initialization is now handled globally
+        if not firebase_admin._apps:
+            print("[DocumentVaultService] Warning: Firebase should be initialized globally.")
+        
+        self.bucket = storage.bucket()
+        
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
         
@@ -146,11 +156,11 @@ class DocumentVaultService:
         # Encrypt content
         encrypted_content = self._encrypt_content(content, encryption_key)
         
-        # Store encrypted file
-        storage_path = self._get_storage_path(user_id, document_id)
-        async with aiofiles.open(storage_path, 'wb') as f:
-            await f.write(encrypted_content)
-        
+        # Store encrypted file in Firebase Storage
+        blob = self.bucket.blob(f"{user_id}/{document_id}.enc")
+        blob.upload_from_string(encrypted_content, content_type="application/octet-stream")
+        storage_path = blob.public_url
+
         # Determine MIME type
         file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
         
@@ -172,7 +182,7 @@ class DocumentVaultService:
             is_encrypted=True,
             encryption_key_id=document_id,  # Use document_id as key identifier
             file_hash=file_hash,
-            storage_path=str(storage_path),
+            storage_path=storage_path,
             created_at=datetime.now(),
             updated_at=datetime.now(),
             access_count=0
@@ -202,6 +212,9 @@ class DocumentVaultService:
             print(f"AI processing failed for document {document_id}: {str(e)}")
             # Continue without AI processing
         
+        # Save document to MongoDB using Beanie
+        await document.insert()
+
         # Create automatic reminders based on document type and expiry
         if document.expiry_date:
             await self._create_expiry_reminders(document)
@@ -216,42 +229,42 @@ class DocumentVaultService:
 
     async def get_document_content(self, user_id: str, document_id: str) -> bytes:
         """Retrieve and decrypt document content."""
-        # Get storage path
-        storage_path = self._get_storage_path(user_id, document_id)
-        
-        if not storage_path.exists():
+        document = await Document.get(document_id)
+        if not document or document.user_id != user_id:
             raise HTTPException(status_code=404, detail="Document not found")
-        
+
         # Generate decryption key
         encryption_key = self._generate_encryption_key(user_id, document_id)
         
-        # Read and decrypt content
-        async with aiofiles.open(storage_path, 'rb') as f:
-            encrypted_content = await f.read()
-        
+        # Download from Firebase Storage
+        blob = self.bucket.blob(f"{user_id}/{document_id}.enc")
+        encrypted_content = blob.download_as_bytes()
+
         decrypted_content = self._decrypt_content(encrypted_content, encryption_key)
         
         # Log access
+        await document.update({"$inc": {"access_count": 1}})
         await self._log_document_action(document_id, user_id, "view")
         
         return decrypted_content
 
     async def delete_document(self, user_id: str, document_id: str) -> bool:
         """Securely delete a document and its metadata."""
-        storage_path = self._get_storage_path(user_id, document_id)
-        
-        if storage_path.exists():
-            # Securely overwrite file before deletion
-            async with aiofiles.open(storage_path, 'wb') as f:
-                await f.write(b'\x00' * storage_path.stat().st_size)
+        document = await Document.get(document_id)
+        if not document or document.user_id != user_id:
+            return False
+
+        # Delete from Firebase Storage
+        blob = self.bucket.blob(f"{user_id}/{document_id}.enc")
+        if blob.exists():
+            blob.delete()
+
+        # Delete from MongoDB
+        await document.delete()
             
-            storage_path.unlink()
-            
-            # Log deletion
-            await self._log_document_action(document_id, user_id, "delete")
-            return True
-        
-        return False
+        # Log deletion
+        await self._log_document_action(document_id, user_id, "delete")
+        return True
 
     async def search_documents(
         self, 
@@ -265,21 +278,35 @@ class DocumentVaultService:
     ) -> List[Document]:
         """
         Search documents with various filters.
-        This is a placeholder - in production, you'd query from database.
         """
-        # This would typically query from your database
-        # For now, returning empty list as placeholder
-        return []
+        search_criteria = {"user_id": user_id}
+        if query:
+            search_criteria["$text"] = {"$search": query}
+        if document_type:
+            search_criteria["document_type"] = document_type
+        if status:
+            search_criteria["status"] = status
+        if tags:
+            search_criteria["tags"] = {"$in": tags}
+        if date_from:
+            search_criteria["created_at"] = {"$gte": date_from}
+        if date_to:
+            search_criteria.setdefault("created_at", {})["$lte"] = date_to
+            
+        return await Document.find(search_criteria).to_list()
+
+    async def get_reminders(self, user_id: str) -> List[DocumentReminder]:
+        """Get all active reminders for a user."""
+        return await DocumentReminder.find(
+            {"user_id": user_id, "is_active": True, "reminder_date": {"$gte": datetime.now()}}
+        ).to_list()
 
     async def get_document_insights(self, user_id: str, document_id: str) -> Dict[str, Any]:
         """Get AI-powered insights about a document."""
-        # This would fetch from DocumentExtraction table
-        return {
-            "expiry_alerts": [],
-            "renewal_suggestions": [],
-            "related_documents": [],
-            "compliance_status": "compliant"
-        }
+        extraction = await DocumentExtraction.find_one({"document_id": document_id})
+        if not extraction:
+            return {}
+        return extraction.insights
 
     async def _create_expiry_reminders(self, document: Document) -> List[DocumentReminder]:
         """Create automatic expiry reminders for a document."""
@@ -289,14 +316,13 @@ class DocumentVaultService:
         config = self.document_configs.get(document.document_type, {})
         reminder_days = config.get("expiry_reminder_days", [30, 15, 7])
         
-        reminders = []
+        reminders_to_create = []
         for days_before in reminder_days:
             reminder_date = document.expiry_date - timedelta(days=days_before)
             
             # Only create reminders for future dates
             if reminder_date > datetime.now():
                 reminder = DocumentReminder(
-                    id=str(uuid.uuid4()),
                     user_id=document.user_id,
                     document_id=document.id,
                     title=f"{document.title} expires in {days_before} days",
@@ -304,11 +330,13 @@ class DocumentVaultService:
                     reminder_type=ReminderType.DOCUMENT_EXPIRY,
                     reminder_date=reminder_date,
                     is_active=True,
-                    created_at=datetime.now()
                 )
-                reminders.append(reminder)
+                reminders_to_create.append(reminder)
         
-        return reminders
+        if reminders_to_create:
+            await DocumentReminder.insert_many(reminders_to_create)
+        
+        return reminders_to_create
 
     async def _log_document_action(
         self, 
@@ -319,59 +347,79 @@ class DocumentVaultService:
     ) -> None:
         """Log document actions for audit trail."""
         log_entry = DocumentAuditLog(
-            id=str(uuid.uuid4()),
             document_id=document_id,
             user_id=user_id,
             action=action,
             details=details or {},
-            timestamp=datetime.now()
         )
-        # In production, save to database
-        print(f"Audit log: {action} on document {document_id} by user {user_id}")
+        await log_entry.insert()
 
-    async def get_storage_stats(self, user_id: str) -> Dict[str, Any]:
+    async def get_stats(self, user_id: str) -> Dict[str, Any]:
         """Get storage statistics for a user."""
-        user_path = self.storage_path / user_id
+        total_docs = await Document.find({"user_id": user_id}).count()
         
-        if not user_path.exists():
-            return {
-                "total_documents": 0,
-                "total_size_bytes": 0,
-                "total_size_mb": 0,
-                "by_type": {}
-            }
-        
-        total_size = sum(f.stat().st_size for f in user_path.glob("*.enc"))
-        file_count = len(list(user_path.glob("*.enc")))
+        # In a real app, you might aggregate size from the documents
+        # For now, we'll just return the count
         
         return {
-            "total_documents": file_count,
-            "total_size_bytes": total_size,
-            "total_size_mb": round(total_size / (1024 * 1024), 2),
-            "storage_path": str(user_path),
-            "by_type": {}  # Would be populated from database in production
+            "total_documents": total_docs,
+            "total_size_bytes": 0, # Placeholder
+            "total_size_mb": 0, # Placeholder
+            "by_type": {}  # Placeholder
         }
 
     async def create_document_backup(self, user_id: str, document_id: str) -> str:
         """Create a backup of a document."""
-        source_path = self._get_storage_path(user_id, document_id)
-        backup_path = self.storage_path / "backups" / user_id / f"{document_id}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.enc"
-        
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Copy encrypted file
-        async with aiofiles.open(source_path, 'rb') as source:
-            content = await source.read()
-            async with aiofiles.open(backup_path, 'wb') as backup:
-                await backup.write(content)
-        
-        return str(backup_path)
+        document = await Document.get(document_id)
+        if not document or document.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Document not found")
 
-    async def verify_document_integrity(self, user_id: str, document_id: str, expected_hash: str) -> bool:
+        source_blob = self.bucket.blob(f"{user_id}/{document_id}.enc")
+        backup_blob_name = f"backups/{user_id}/{document_id}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.enc"
+        
+        self.bucket.copy_blob(source_blob, self.bucket, backup_blob_name)
+        
+        return backup_blob_name
+
+    async def verify_document_integrity(self, user_id: str, document_id: str) -> bool:
         """Verify document integrity using hash comparison."""
+        document = await Document.get(document_id)
+        if not document:
+            return False
+            
         try:
             content = await self.get_document_content(user_id, document_id)
             actual_hash = self._calculate_file_hash(content)
-            return actual_hash == expected_hash
+            return actual_hash == document.file_hash
         except Exception:
             return False
+
+    async def get_documents(self, user_id: str) -> List[Document]:
+        """Get all documents for a user."""
+        return await Document.find({"user_id": user_id}).to_list()
+
+    async def get_document_details(self, user_id: str, doc_id: str) -> Optional[Document]:
+        """Get details for a single document."""
+        document = await Document.get(doc_id)
+        if document and document.user_id == user_id:
+            return document
+        return None
+
+    async def download_document(self, user_id: str, doc_id: str) -> Optional[BinaryIO]:
+        """Download a document's content."""
+        document = await Document.get(doc_id)
+        if not document or document.user_id != user_id:
+            return None
+        
+        blob = self.bucket.blob(f"{user_id}/{doc_id}.enc")
+        if not blob.exists():
+            return None
+            
+        # Generate decryption key
+        encryption_key = self._generate_encryption_key(user_id, doc_id)
+        
+        encrypted_content = blob.download_as_bytes()
+        decrypted_content = self._decrypt_content(encrypted_content, encryption_key)
+        
+        import io
+        return io.BytesIO(decrypted_content)
