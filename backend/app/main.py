@@ -3,6 +3,7 @@ from app.services.debt_service import DebtService
 from app.models.debt import Debt
 from fastapi import APIRouter, UploadFile, File, Form
 from typing import List
+from app.services.chatbot import ask_gemini
 
 debt_service = DebtService()
 debt_router = APIRouter()
@@ -595,6 +596,15 @@ async def health_check():
 async def read_user_profile(current_user: dict = Depends(get_current_user)):
     # Example: Fetch user-specific data using current_user["id"]
     return {"message": "Authenticated!", "user_id": current_user["id"]}
+
+# Chatbot endpoint for dashboard.
+@app.post("/chat")
+async def chat_with_ai(payload: dict):
+    question = payload.get("message", "")
+    if not question:
+        return {"reply": "Please enter a message."}
+    reply = ask_gemini(question)
+    return {"reply": reply}
 
 if __name__ == "__main__":
     import uvicorn
