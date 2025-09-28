@@ -1,65 +1,15 @@
-from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from typing import List, Dict, Optional
-import uuid
-from datetime import datetime
-import os
-from dotenv import load_dotenv
-from app.core.config import settings
-from app.models.debt import Debt
-from app.models.database import (
-    User, UserCreate, UserLogin, Transaction, TaxData, 
-    CIBILData, FileUpload, TaxRecommendation, CIBILRecommendation
-)
+from fastapi import FastAPI
 from app.services.debt_service import DebtService
-from app.services.tax_calculator import TaxCalculator
-from app.services.cibil_advisor import CIBILAdvisor
-from app.services.file_parser import FileParser
-from app.deps.auth import get_current_user
-from app.services.capital_gains_service import CapitalGainsService
-
-# Load environment variables
-load_dotenv()
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
-
-# Initialize FastAPI app
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    debug=settings.DEBUG
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize servicesfrom app.services.chatbot import ask_gemini
+from app.models.debt import Debt
+from fastapi import APIRouter, UploadFile, File, Form
+from typing import List
 
 debt_service = DebtService()
-tax_calculator = TaxCalculator()
-cibil_advisor = CIBILAdvisor()
-file_parser = FileParser()
-capital_gains_service = CapitalGainsService()
-
-# In-memory storage (replace with actual database in production)
-user_debts = {}
-users_db = {}
-transactions_db = {}
-tax_data_db = {}
-cibil_data_db = {}
-user_gains = {}
-
-# Routers
 debt_router = APIRouter()
-capital_gains_router = APIRouter()
 
-# Debt endpoints
+# In-memory debt store for demo (replace with DB in production)
+user_debts = {}
+
 @debt_router.post('/debt/ingest')
 async def ingest_debts(user_id: str = Form(...), file: UploadFile = File(...)):
     content = await file.read()
@@ -78,70 +28,40 @@ async def simulate_debt(user_id: str = Form(...), strategy: str = Form('snowball
     result = debt_service.simulate_repayment(debts, strategy)
     return result
 
-# Capital gains endpoints
-@capital_gains_router.post('/capital_gains/ingest')
-async def ingest_gains(user_id: str = Form(...), file: UploadFile = File(...)):
-    content = await file.read()
-    gains = capital_gains_service.ingest(user_id, content, file.filename)
-    user_gains[user_id] = gains
-    return {'success': True, 'count': len(gains)}
-
-@capital_gains_router.get('/capital_gains/list')
-async def list_gains(user_id: str):
-    gains = user_gains.get(user_id, [])
-    return {'gains': [vars(g) for g in gains]}
-
-@capital_gains_router.post('/capital_gains/analyze')
-async def analyze_gains(user_id: str = Form(...)):
-    result = capital_gains_service.analyze(user_id)
-    return result
-
-# Register routers
-app.include_router(debt_router)
-app.include_router(capital_gains_router)
-
-# Initialize mock user for development
-mock_user_id = 'mock-user-id'
-mock_user = User(
-    id=mock_user_id,
-    email='mock@user.com',
-    name='Mock User',
-    phone='1234567890',
-    pan_number='MOCK12345P',
-    created_at=datetime.now()
+from fastapi import File, UploadFile, HTTPException
+from app.core.config import settings
+from app.models.database import (
+    User, UserCreate, UserLogin, Transaction, TaxData, 
+    CIBILData, FileUpload, TaxRecommendation, CIBILRecommendation,
+    Document, DocumentType, DocumentStatus, DocumentReminder, 
+    ReminderType, ReminderFrequency
 )
-users_db[mock_user_id] = mock_user
-transactions_db[mock_user_id] = []
-tax_data_db[mock_user_id] = TaxData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id,
-    tax_year=settings.TAX_YEAR,
-    gross_income=0
-)
-cibil_data_db[mock_user_id] = CIBILData(
-    id=str(uuid.uuid4()),
-    user_id=mock_user_id
-)
+from app.services.tax_calculator import TaxCalculator
+from app.services.cibil_advisor import CIBILAdvisor
+from app.services.file_parser import FileParser
+from app.services.document_vault_service import DocumentVaultService
+from app.deps.auth import get_current_user
+# Tax report endpoint (AIS/TIS + Capital Gains integration)
+async def generate_tax_report_api(
+    user_id: str,
+    ais_file: UploadFile = File(None),
+    broker_file: UploadFile = File(None),
+    asset_type: str = "equity"
+):
+    """
+    Generate comprehensive tax report for user, integrating AIS/TIS and capital gains data.
+    """
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
 
-# Root endpoint
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to TaxWise API",
-        "version": settings.APP_VERSION,
-        "endpoints": {
-            "auth": "/auth",
-            "upload": "/upload",
-            "tax": "/tax",
-            "cibil": "/cibil",
-            "dashboard": "/dashboard"
-        }
-    }
+    # Get user transactions
+    user_transactions = transactions_db.get(user_id, [])
 
-# Authentication endpoints
-@app.post("/auth/register")
-async def register(user_data: UserCreate):
-    # ...existing code...
+    # Parse AIS/TIS transactions
+    ais_transactions = []
+
+    # Tax report endpoint (AIS/TIS + Capital Gains integration)
+    @app.post("/api/tax-report/{user_id}")
     async def generate_tax_report_api(
         user_id: str,
         ais_file: UploadFile = File(None),
@@ -188,7 +108,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 # Load environment variables
@@ -262,12 +182,15 @@ app.add_middleware(
 tax_calculator = TaxCalculator()
 cibil_advisor = CIBILAdvisor()
 file_parser = FileParser()
+document_vault = DocumentVaultService()
 
 # In-memory storage (replace with actual database in production)
 users_db = {}
 transactions_db = {}
 tax_data_db = {}
 cibil_data_db = {}
+documents_db = {}  # Document vault storage
+reminders_db = {}  # Document reminders storage
 
 # Initialize mock user for development
 mock_user_id = 'mock-user-id'
@@ -303,7 +226,8 @@ async def root():
             "upload": "/upload",
             "tax": "/tax",
             "cibil": "/cibil",
-            "dashboard": "/dashboard"
+            "dashboard": "/dashboard",
+            "vault": "/vault"
         }
     }
 
@@ -669,6 +593,429 @@ async def get_dashboard(user_id: str):
     
     return dashboard
 
+# Document Vault API Endpoints
+@app.post("/vault/{user_id}/upload")
+async def upload_document(
+    user_id: str,
+    file: UploadFile = File(...),
+    document_type: DocumentType = Form(...),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    issue_date: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    document_number: Optional[str] = Form(None)
+):
+    """Upload a document to the secure vault"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        # Parse dates if provided
+        parsed_issue_date = None
+        parsed_expiry_date = None
+        
+        if issue_date:
+            try:
+                parsed_issue_date = datetime.fromisoformat(issue_date.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+        
+        if expiry_date:
+            try:
+                parsed_expiry_date = datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+        
+        # Parse tags
+        parsed_tags = []
+        if tags:
+            parsed_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        
+        # Upload document
+        document = await document_vault.upload_document(
+            user_id=user_id,
+            file=file,
+            document_type=document_type,
+            title=title,
+            description=description,
+            tags=parsed_tags,
+            issue_date=parsed_issue_date,
+            expiry_date=parsed_expiry_date,
+            document_number=document_number
+        )
+        
+        # Store in memory (in production, save to database)
+        if user_id not in documents_db:
+            documents_db[user_id] = []
+        documents_db[user_id].append(document)
+        
+        return {
+            "message": "Document uploaded successfully",
+            "document_id": document.id,
+            "document": {
+                "id": document.id,
+                "title": document.title,
+                "document_type": document.document_type,
+                "file_name": document.file_name,
+                "file_size": document.file_size,
+                "status": document.status,
+                "created_at": document.created_at.isoformat() if document.created_at else None,
+                "expiry_date": document.expiry_date.isoformat() if document.expiry_date else None
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/vault/{user_id}/documents")
+async def list_documents(
+    user_id: str,
+    document_type: Optional[DocumentType] = None,
+    status: Optional[DocumentStatus] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """List user's documents with optional filtering"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    
+    # Apply filters
+    if document_type:
+        user_documents = [doc for doc in user_documents if doc.document_type == document_type]
+    if status:
+        user_documents = [doc for doc in user_documents if doc.status == status]
+    
+    # Apply pagination
+    total = len(user_documents)
+    documents = user_documents[offset:offset + limit]
+    
+    # Format response
+    formatted_docs = []
+    for doc in documents:
+        formatted_docs.append({
+            "id": doc.id,
+            "title": doc.title,
+            "document_type": doc.document_type,
+            "file_name": doc.file_name,
+            "file_size": doc.file_size,
+            "status": doc.status,
+            "tags": doc.tags,
+            "document_number": doc.document_number,
+            "issue_date": doc.issue_date.isoformat() if doc.issue_date else None,
+            "expiry_date": doc.expiry_date.isoformat() if doc.expiry_date else None,
+            "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            "access_count": doc.access_count
+        })
+    
+    return {
+        "documents": formatted_docs,
+        "total": total,
+        "offset": offset,
+        "limit": limit
+    }
+
+@app.get("/vault/{user_id}/documents/{document_id}")
+async def get_document_details(user_id: str, document_id: str):
+    """Get detailed information about a document"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    document = next((doc for doc in user_documents if doc.id == document_id), None)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Get AI insights
+    insights = await document_vault.get_document_insights(user_id, document_id)
+    
+    return {
+        "id": document.id,
+        "title": document.title,
+        "document_type": document.document_type,
+        "file_name": document.file_name,
+        "file_size": document.file_size,
+        "file_type": document.file_type,
+        "status": document.status,
+        "tags": document.tags,
+        "description": document.description,
+        "document_number": document.document_number,
+        "issue_date": document.issue_date.isoformat() if document.issue_date else None,
+        "expiry_date": document.expiry_date.isoformat() if document.expiry_date else None,
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+        "updated_at": document.updated_at.isoformat() if document.updated_at else None,
+        "access_count": document.access_count,
+        "extracted_data": document.extracted_data,
+        "insights": insights
+    }
+
+@app.get("/vault/{user_id}/documents/{document_id}/download")
+async def download_document(user_id: str, document_id: str):
+    """Download a document (returns file content)"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    document = next((doc for doc in user_documents if doc.id == document_id), None)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    try:
+        # Get document content
+        content = await document_vault.get_document_content(user_id, document_id)
+        
+        # Update access count
+        document.access_count += 1
+        document.accessed_at = datetime.now()
+        
+        from fastapi.responses import StreamingResponse
+        import io
+        
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type=document.file_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={document.file_name}"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/vault/{user_id}/documents/{document_id}")
+async def delete_document(user_id: str, document_id: str):
+    """Delete a document permanently"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    document = next((doc for doc in user_documents if doc.id == document_id), None)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    try:
+        # Delete from storage
+        await document_vault.delete_document(user_id, document_id)
+        
+        # Remove from memory
+        documents_db[user_id].remove(document)
+        
+        return {"message": "Document deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/vault/{user_id}/search")
+async def search_documents(
+    user_id: str,
+    query: Optional[str] = None,
+    document_type: Optional[DocumentType] = None,
+    tags: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None
+):
+    """Search documents with various filters"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    results = []
+    
+    for doc in user_documents:
+        include = True
+        
+        # Text search in title, description, and extracted text
+        if query:
+            search_text = f"{doc.title} {doc.description or ''} {doc.extracted_text or ''}".lower()
+            if query.lower() not in search_text:
+                include = False
+        
+        # Document type filter
+        if document_type and doc.document_type != document_type:
+            include = False
+        
+        # Tags filter
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(',')]
+            if not any(tag in doc.tags for tag in tag_list):
+                include = False
+        
+        # Date range filter
+        if date_from or date_to:
+            doc_date = doc.created_at
+            if doc_date:
+                if date_from:
+                    try:
+                        from_date = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+                        if doc_date < from_date:
+                            include = False
+                    except ValueError:
+                        pass
+                
+                if date_to:
+                    try:
+                        to_date = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+                        if doc_date > to_date:
+                            include = False
+                    except ValueError:
+                        pass
+        
+        if include:
+            results.append({
+                "id": doc.id,
+                "title": doc.title,
+                "document_type": doc.document_type,
+                "file_name": doc.file_name,
+                "status": doc.status,
+                "tags": doc.tags,
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "expiry_date": doc.expiry_date.isoformat() if doc.expiry_date else None
+            })
+    
+    return {
+        "results": results,
+        "total": len(results),
+        "query": query
+    }
+
+@app.get("/vault/{user_id}/reminders")
+async def get_document_reminders(user_id: str, active_only: bool = True):
+    """Get document reminders for user"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_reminders = reminders_db.get(user_id, [])
+    
+    if active_only:
+        user_reminders = [r for r in user_reminders if r.is_active and not r.is_completed]
+    
+    # Sort by reminder date
+    user_reminders.sort(key=lambda r: r.reminder_date)
+    
+    formatted_reminders = []
+    for reminder in user_reminders:
+        formatted_reminders.append({
+            "id": reminder.id,
+            "title": reminder.title,
+            "description": reminder.description,
+            "reminder_type": reminder.reminder_type,
+            "reminder_date": reminder.reminder_date.isoformat(),
+            "frequency": reminder.frequency,
+            "is_active": reminder.is_active,
+            "is_completed": reminder.is_completed,
+            "document_id": reminder.document_id,
+            "ai_priority_score": reminder.ai_priority_score
+        })
+    
+    return {
+        "reminders": formatted_reminders,
+        "total": len(formatted_reminders)
+    }
+
+@app.post("/vault/{user_id}/reminders")
+async def create_custom_reminder(
+    user_id: str,
+    reminder_data: Dict
+):
+    """Create a custom reminder"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        reminder = DocumentReminder(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=reminder_data.get("title"),
+            description=reminder_data.get("description"),
+            reminder_type=ReminderType.CUSTOM,
+            reminder_date=datetime.fromisoformat(reminder_data.get("reminder_date")),
+            frequency=ReminderFrequency(reminder_data.get("frequency", "once")),
+            is_active=True,
+            created_at=datetime.now()
+        )
+        
+        if user_id not in reminders_db:
+            reminders_db[user_id] = []
+        reminders_db[user_id].append(reminder)
+        
+        return {
+            "message": "Reminder created successfully",
+            "reminder_id": reminder.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/vault/{user_id}/stats")
+async def get_vault_statistics(user_id: str):
+    """Get document vault statistics"""
+    if user_id not in users_db:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_documents = documents_db.get(user_id, [])
+    user_reminders = reminders_db.get(user_id, [])
+    
+    # Storage stats
+    storage_stats = await document_vault.get_storage_stats(user_id)
+    
+    # Document type breakdown
+    type_breakdown = {}
+    status_breakdown = {}
+    
+    for doc in user_documents:
+        doc_type = doc.document_type.value
+        doc_status = doc.status.value
+        
+        type_breakdown[doc_type] = type_breakdown.get(doc_type, 0) + 1
+        status_breakdown[doc_status] = status_breakdown.get(doc_status, 0) + 1
+    
+    # Upcoming reminders
+    upcoming_reminders = [
+        r for r in user_reminders 
+        if r.is_active and not r.is_completed and r.reminder_date > datetime.now()
+    ]
+    upcoming_reminders.sort(key=lambda r: r.reminder_date)
+    
+    # Expired documents
+    expired_docs = [
+        doc for doc in user_documents 
+        if doc.expiry_date and doc.expiry_date < datetime.now()
+    ]
+    
+    # Expiring soon (next 30 days)
+    expiring_soon = [
+        doc for doc in user_documents 
+        if doc.expiry_date and 
+           datetime.now() < doc.expiry_date <= (datetime.now() + timedelta(days=30))
+    ]
+    
+    return {
+        "storage": storage_stats,
+        "document_counts": {
+            "total": len(user_documents),
+            "by_type": type_breakdown,
+            "by_status": status_breakdown,
+            "expired": len(expired_docs),
+            "expiring_soon": len(expiring_soon)
+        },
+        "reminders": {
+            "total": len(user_reminders),
+            "active": len([r for r in user_reminders if r.is_active]),
+            "upcoming": len(upcoming_reminders[:5])  # Next 5 reminders
+        },
+        "recent_activity": {
+            "documents_uploaded_this_month": len([
+                doc for doc in user_documents 
+                if doc.created_at and doc.created_at >= (datetime.now() - timedelta(days=30))
+            ]),
+            "total_accesses_this_month": sum(
+                doc.access_count for doc in user_documents 
+                if doc.accessed_at and doc.accessed_at >= (datetime.now() - timedelta(days=30))
+            )
+        }
+    }
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -704,15 +1051,6 @@ async def analyze_gains(user_id: str = Form(...)):
     return result
 
 app.include_router(capital_gains_router)
-
-# Chatbot endpoint for dashboard.
-@app.post("/chat")
-async def chat_with_ai(payload: dict):
-    question = payload.get("message", "")
-    if not question:
-        return {"reply": "Please enter a message."}
-    reply = ask_gemini(question)
-    return {"reply": reply}
 
 if __name__ == "__main__":
     import uvicorn

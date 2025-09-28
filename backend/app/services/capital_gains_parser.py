@@ -1,5 +1,17 @@
 import pandas as pd
-from io import BytesIO
+from io import BytesIO, StringIO
+from typing import List
+
+class CapitalGain:
+    def __init__(self, trade_date, type, instrument, quantity, buy_price, sell_price, gain_loss, holding_period):
+        self.trade_date = trade_date
+        self.type = type
+        self.instrument = instrument
+        self.quantity = quantity
+        self.buy_price = buy_price
+        self.sell_price = sell_price
+        self.gain_loss = gain_loss
+        self.holding_period = holding_period
 
 class CapitalGainsParser:
     """
@@ -25,6 +37,38 @@ class CapitalGainsParser:
             if any(col in cols for col in sig_cols):
                 return source
         return 'unknown'
+
+    def ingest_gains(self, file_content: bytes, filename: str) -> List[CapitalGain]:
+        ext = filename.split('.')[-1].lower()
+        if ext == 'csv':
+            df = pd.read_csv(StringIO(file_content.decode('utf-8')))
+        else:
+            df = pd.read_excel(BytesIO(file_content))
+        df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
+        gains = []
+        for _, row in df.iterrows():
+            gains.append(CapitalGain(
+                trade_date=row.get('trade_date', ''),
+                type=row.get('type', ''),
+                instrument=row.get('instrument', ''),
+                quantity=row.get('quantity', 0),
+                buy_price=row.get('buy_price', 0),
+                sell_price=row.get('sell_price', 0),
+                gain_loss=row.get('gain_loss', 0),
+                holding_period=row.get('holding_period', 0)
+            ))
+        return gains
+
+    def analyze_gains(self, gains: List[CapitalGain]):
+        total_gain = sum(float(g.gain_loss) for g in gains)
+        short_term = sum(float(g.gain_loss) for g in gains if float(g.holding_period) < 365)
+        long_term = sum(float(g.gain_loss) for g in gains if float(g.holding_period) >= 365)
+        return {
+            "total_gain": round(total_gain, 2),
+            "short_term_gain": round(short_term, 2),
+            "long_term_gain": round(long_term, 2),
+            "count": len(gains)
+        }
 
     def parse(self, file_content: bytes, filename: str) -> dict:
         """

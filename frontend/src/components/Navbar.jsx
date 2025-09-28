@@ -1,36 +1,61 @@
-import React from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { BellIcon, UserCircleIcon, CogIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 
 const Navbar = ({ user, onLogout }) => {
+  const [show, setShow] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY < 10) {
+        setShow(true);
+      } else if (currentScrollY > lastScrollY) {
+        setShow(false); // scrolling down
+      } else {
+        setShow(true); // scrolling up
+      }
+      setLastScrollY(currentScrollY);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
   return (
-    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      <div className="px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo and Brand */}
-          <div className="flex items-center">
+    <motion.nav
+      initial={{ y: 0, opacity: 1 }}
+      animate={{ y: show ? 0 : -80, opacity: show ? 1 : 0 }}
+      transition={{ duration: 0.3 }}
+      className="fixed top-0 left-0 w-full z-50 backdrop-blur-lg bg-white/80 shadow-lg border-b border-gray-100"
+      style={{ willChange: 'transform' }}
+    >
+      <div className="w-full px-8">
+        <div className="flex flex-row items-center justify-between h-16 w-full">
+          {/* Logo and Brand - only in navbar */}
+          <div className="flex items-center gap-3">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex items-center space-x-3"
+              className="flex items-center gap-3"
             >
-              {/* Logo Icon */}
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center shadow-md">
                 <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">TaxWise</h1>
+                <h1 className="text-xl font-bold text-gray-900 tracking-tight">TaxWise</h1>
                 <p className="text-xs text-gray-500">Smart Finance Platform</p>
               </div>
             </motion.div>
           </div>
 
-          {/* Right Side Menu */}
-          <div className="flex items-center space-x-4">
+          {/* Right Side Menu - fully spaced out horizontally */}
+          <div className="flex items-center gap-8">
             {/* Quick Stats */}
-            <div className="hidden lg:flex items-center space-x-6 mr-8">
+            <div className="hidden lg:flex items-center gap-8 mr-8">
               <div className="text-right">
                 <p className="text-xs text-gray-500">Tax Year</p>
                 <p className="text-sm font-semibold text-gray-900">2024-25</p>
@@ -43,32 +68,32 @@ const Navbar = ({ user, onLogout }) => {
             </div>
 
             {/* Icons */}
-            <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors relative">
-              <BellIcon className="w-5 h-5 text-gray-600" />
+            <button className="p-2 hover:bg-indigo-50 rounded-lg transition-colors relative">
+              <BellIcon className="w-5 h-5 text-indigo-600" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
 
-            <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-              <CogIcon className="w-5 h-5 text-gray-600" />
+            <button className="p-2 hover:bg-indigo-50 rounded-lg transition-colors">
+              <CogIcon className="w-5 h-5 text-indigo-600" />
             </button>
 
             {/* User Menu */}
             <div className="relative group">
-              <button className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg transition-colors">
+              <button className="flex items-center gap-3 p-2 hover:bg-indigo-50 rounded-lg transition-colors">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-gray-900">{user?.name || 'User'}</p>
                   <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
                 </div>
-                <UserCircleIcon className="w-8 h-8 text-gray-600" />
+                <UserCircleIcon className="w-8 h-8 text-indigo-600" />
               </button>
 
               {/* Dropdown */}
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+              <div className="absolute right-0 mt-2 w-48 bg-white/90 rounded-xl shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                 <div className="p-2">
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
+                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 rounded-lg transition-colors">
                     Profile Settings
                   </button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
+                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 rounded-lg transition-colors">
                     Preferences
                   </button>
                   <div className="border-t border-gray-100 mt-2 pt-2">
@@ -76,7 +101,7 @@ const Navbar = ({ user, onLogout }) => {
                       onClick={onLogout}
                       className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
-                      Sign Out
+                      Logout
                     </button>
                   </div>
                 </div>
@@ -85,7 +110,7 @@ const Navbar = ({ user, onLogout }) => {
           </div>
         </div>
       </div>
-    </nav>
+    </motion.nav>
   );
 };
 
