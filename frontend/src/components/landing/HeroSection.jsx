@@ -65,8 +65,8 @@ export default function HeroSection() {
                   speedSegment={0.3}
                   delay={0.5}
                   as="p"
-                  className="mt-8 max-w-2xl text-pretty text-lg text-gray-100 font-inter drop-shadow-lg">
-                  Comprehensive financial tools for tax calculation, CIBIL score analysis, debt management, and capital gains tracking. Make informed decisions with AI-powered insights and real-time analytics.
+                  className="mt-8 max-w-2xl text-pretty text-lg text-gray-700 font-inter drop-shadow-lg">
+                    Comprehensive financial tools for tax calculation, CIBIL score analysis, debt management, and capital gains tracking. Make informed decisions with AI-powered insights and real-time analytics.
                 </TextEffect>
                 <AnimatedGroup
                   variants={{
@@ -84,7 +84,7 @@ export default function HeroSection() {
                   <div
                     key={1}
                     className="bg-gray-100 rounded-xl border p-0.5">
-                    <Link to="/login" style={{ textDecoration: 'none' }}>
+                      <Link to="/register" style={{ textDecoration: 'none' }}>
                       <Button
                         size="lg"
                         className="rounded-xl px-5 text-base bg-primary-600 hover:bg-primary-700">
@@ -109,19 +109,19 @@ export default function HeroSection() {
                   animate={{ opacity: 0.8, y: 0 }}
                   transition={{ delay: 1.2, duration: 0.8 }}
                 >
-                  <div className="flex items-center gap-2 text-sm text-white drop-shadow">
+                  <div className="flex items-center gap-2 text-sm text-gray-700 drop-shadow">
                     <Calculator className="w-5 h-5" />
                     Tax Calculator
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-white drop-shadow">
+                  <div className="flex items-center gap-2 text-sm text-gray-700 drop-shadow">
                     <Shield className="w-5 h-5" />
                     CIBIL Analysis
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-white drop-shadow">
+                  <div className="flex items-center gap-2 text-sm text-gray-700 drop-shadow">
                     <TrendingUp className="w-5 h-5" />
                     Capital Gains
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-white drop-shadow">
+                  <div className="flex items-center gap-2 text-sm text-gray-700 drop-shadow">
                     <BarChart3 className="w-5 h-5" />
                     Debt Management
                   </div>

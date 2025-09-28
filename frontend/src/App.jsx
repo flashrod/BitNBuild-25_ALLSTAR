@@ -26,24 +26,18 @@ function App() {
       <Route path="/login" element={!currentUser ? <Login /> : <Navigate to="/dashboard" />} />
       <Route path="/register" element={!currentUser ? <Register /> : <Navigate to="/dashboard" />} />
       <Route path="/landing" element={<Landing />} />
-      
-      <Route 
-        path="/"
-        element={
-          currentUser ? <MainLayout /> : <Navigate to="/login" />
-        } 
-      >
-        <Route index element={<Navigate to="/dashboard" />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="upload" element={<FileUpload />} />
-        <Route path="tax" element={<TaxCalculator />} />
-        <Route path="cibil" element={<CIBILAdvisor />} />
-        <Route path="debt" element={<DebtDashboard />} />
-        <Route path="capital-gains" element={<CapitalGainsAnalyzer />} />
-        <Route path="help" element={<HelpSupport />} />
-        <Route path="vault" element={<DocumentVault />} />
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+      <Route element={<MainLayout />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/upload" element={<FileUpload />} />
+        <Route path="/tax" element={<TaxCalculator />} />
+        <Route path="/cibil" element={<CIBILAdvisor />} />
+        <Route path="/debt" element={<DebtDashboard />} />
+        <Route path="/capital-gains" element={<CapitalGainsAnalyzer />} />
+        <Route path="/help" element={<HelpSupport />} />
+        <Route path="/vault" element={<DocumentVault />} />
       </Route>
+      <Route path="/" element={<Navigate to="/landing" />} />
+      <Route path="*" element={<Navigate to="/landing" />} />
     </Routes>
   );
 }
