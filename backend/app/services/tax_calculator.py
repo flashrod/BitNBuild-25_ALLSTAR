@@ -186,3 +186,23 @@ class TaxCalculator:
             return gross_income * 0.20 * 0.9  # 90% of 20%
         else:
             return gross_income * 0.30 * 0.9  # 90% of 30%
+
+
+# ---------------------------------------------------------------------------
+# Helper function for reports endpoint (simple capital gains tax impact)
+# ---------------------------------------------------------------------------
+def calculate_tax_impact(total_capital_gains: float) -> dict:
+    """Rudimentary tax impact estimation for capital gains summary.
+    Assumptions:
+      - Short-term taxed at 15%
+      - Long-term taxed at 10% after 1L exemption (simplified) applied to total.
+    Since we don't have ST/LT split here, we approximate 40% ST, 60% LT.
+    """
+    if total_capital_gains <= 0:
+        return {"estimated_tax": 0.0, "effective_rate": 0.0}
+    st_component = total_capital_gains * 0.4
+    lt_component = total_capital_gains * 0.6
+    lt_taxable = max(0, lt_component - 100000)  # 1L exemption
+    tax = st_component * 0.15 + lt_taxable * 0.10
+    effective_rate = tax / total_capital_gains * 100
+    return {"estimated_tax": round(tax,2), "effective_rate": round(effective_rate,2)}

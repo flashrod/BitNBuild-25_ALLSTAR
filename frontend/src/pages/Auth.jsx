@@ -1,16 +1,16 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  UserPlusIcon,
-  EnvelopeIcon,
   LockClosedIcon,
+  EnvelopeIcon,
+  UserPlusIcon,
   ArrowRightOnRectangleIcon,
   ExclamationTriangleIcon,
-  ArrowPathIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
 const palette = {
@@ -24,23 +24,30 @@ const palette = {
   success: "text-emerald-600"
 };
 
-const Register = () => {
+const Auth = () => {
   const navigate = useNavigate();
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = async (e) => {
+  const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     setSuccess("");
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      setSuccess("Account created!");
-      setTimeout(() => navigate("/dashboard"), 800);
+      if (mode === "login") {
+        await signInWithEmailAndPassword(auth, email, password);
+        setSuccess("Welcome back!");
+        setTimeout(() => navigate("/dashboard"), 800);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+        setSuccess("Account created!");
+        setTimeout(() => navigate("/dashboard"), 800);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -49,7 +56,7 @@ const Register = () => {
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center ${palette.bg} px-4 py-8`}>
+    <div className={`min-h-screen flex items-center justify-center ${palette.bg} px-4 py-8`}> 
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -57,13 +64,21 @@ const Register = () => {
       >
         <div className="mb-8 text-center">
           <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="flex justify-center mb-2">
-            <UserPlusIcon className="w-8 h-8 text-indigo-600" />
+            {mode === "login" ? (
+              <ArrowRightOnRectangleIcon className="w-8 h-8 text-indigo-600" />
+            ) : (
+              <UserPlusIcon className="w-8 h-8 text-indigo-600" />
+            )}
           </motion.div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-1 tracking-tight">Create Account</h2>
-          <p className="text-gray-500 text-sm">Create your account to get started.</p>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-1 tracking-tight">
+            {mode === "login" ? "Sign In" : "Create Account"}
+          </h2>
+          <p className="text-gray-500 text-sm">
+            {mode === "login" ? "Welcome back. Please sign in to continue." : "Create your account to get started."}
+          </p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-6">
+        <form onSubmit={handleAuth} className="space-y-6">
           <div>
             <label className="block mb-1 text-gray-700 text-sm font-medium">Email</label>
             <div className="relative">
@@ -124,23 +139,32 @@ const Register = () => {
             {loading ? (
               <span className="flex items-center justify-center gap-2"><ArrowPathIcon className="w-5 h-5 animate-spin" /> Processing...</span>
             ) : (
-              "Register"
+              mode === "login" ? "Sign In" : "Register"
             )}
           </button>
         </form>
 
         <div className="mt-6 text-center">
-          <Link
-            to="/login"
+          <button
+            type="button"
             className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-indigo-600 transition"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError("");
+              setSuccess("");
+            }}
           >
-            <ArrowRightOnRectangleIcon className="w-5 h-5" />
-            Already have an account? Sign in
-          </Link>
+            {mode === "login" ? (
+              <UserPlusIcon className="w-5 h-5" />
+            ) : (
+              <ArrowRightOnRectangleIcon className="w-5 h-5" />
+            )}
+            {mode === "login" ? "Create an account" : "Already have an account? Sign in"}
+          </button>
         </div>
       </motion.div>
     </div>
   );
 };
 
-export default Register;
+export default Auth;

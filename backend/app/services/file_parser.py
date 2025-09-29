@@ -932,3 +932,144 @@ class FileParser:
         """Convert broker CSV row to CapitalGainTransaction dict (deprecated, use parse_broker_csv)"""
         # This method is now superseded by parse_broker_csv, which handles flexible mapping and calculations.
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Lightweight helper functions for analysis endpoint
+# These provide simple CSV -> DataFrame parsing for transactions and capital gains
+# so the analysis router can operate directly on DataFrames without needing
+# model objects. Keeping them here allows: from app.services.file_parser import parse_transaction_file
+# ---------------------------------------------------------------------------
+
+import os
+
+def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df.columns = [c.strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
+    return df
+
+def parse_transaction_file(file_path: str) -> pd.DataFrame:
+    """Parse a transactions CSV into a normalized DataFrame with columns:
+    date (datetime), amount (positive float), type (credit|debit), category (str), optional description.
+
+    Tries to detect common bank export schema variants:
+      - Separate credit / debit columns
+      - Signed amount column with or without an explicit type column
+      - Alternate column names (transaction_date, value, withdrawal, deposit, description, particulars)
+    """
+    if not os.path.exists(file_path):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(file_path)
+    except UnicodeDecodeError:
+        df = pd.read_csv(file_path, encoding='iso-8859-1')
+    except Exception:
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+    df = _standardize_columns(df)
+
+    # Identify date column
+    date_col_candidates = [c for c in df.columns if c in ['date','transaction_date','txn_date','value_date','posting_date']]
+    if not date_col_candidates:
+        # fallback: any column containing 'date'
+        date_col_candidates = [c for c in df.columns if 'date' in c]
+    if not date_col_candidates:
+        return pd.DataFrame()  # cannot proceed
+    date_col = date_col_candidates[0]
+    df['date'] = pd.to_datetime(df[date_col], errors='coerce')
+    df = df.dropna(subset=['date'])
+
+    # Detect amount schema
+    has_credit_col = any(c in df.columns for c in ['credit','cr','deposit'])
+    has_debit_col = any(c in df.columns for c in ['debit','dr','withdrawal'])
+
+    if has_credit_col or has_debit_col:
+        credit_col = next((c for c in ['credit','cr','deposit'] if c in df.columns), None)
+        debit_col = next((c for c in ['debit','dr','withdrawal'] if c in df.columns), None)
+        credits = df[credit_col].fillna(0) if credit_col else 0
+        debits = df[debit_col].fillna(0) if debit_col else 0
+        # Ensure numeric
+        credits = pd.to_numeric(credits, errors='coerce').fillna(0)
+        debits = pd.to_numeric(debits, errors='coerce').fillna(0)
+        credit_rows = df[credits > 0].copy()
+        debit_rows = df[debits > 0].copy()
+        credit_rows['amount'] = credits[credits > 0]
+        credit_rows['type'] = 'credit'
+        debit_rows['amount'] = debits[debits > 0]
+        debit_rows['type'] = 'debit'
+        norm_df = pd.concat([credit_rows, debit_rows], ignore_index=True)
+    else:
+        # Single amount column detection
+        amount_col_candidates = [c for c in df.columns if c in ['amount','transaction_amount','amt','value']]
+        if not amount_col_candidates:
+            # fallback: first numeric-looking column excluding date
+            numeric_cols = [c for c in df.columns if c != 'date' and pd.api.types.is_numeric_dtype(df[c])]
+            if not numeric_cols:
+                return pd.DataFrame()
+            amount_col = numeric_cols[0]
+        else:
+            amount_col = amount_col_candidates[0]
+        df['raw_amount'] = pd.to_numeric(df[amount_col], errors='coerce')
+        df = df.dropna(subset=['raw_amount'])
+        if 'type' in df.columns:
+            df['type'] = df['type'].str.lower().replace({'cr':'credit','dr':'debit'})
+            # Make amounts positive
+            df['amount'] = df['raw_amount'].abs()
+        else:
+            df['type'] = df['raw_amount'].apply(lambda x: 'credit' if x >= 0 else 'debit')
+            df['amount'] = df['raw_amount'].abs()
+        norm_df = df
+
+    # Category detection: use existing column or fallback
+    category_col = next((c for c in ['category','cat','txn_category'] if c in norm_df.columns), None)
+    if category_col:
+        norm_df['category'] = norm_df[category_col].fillna('Uncategorized').astype(str)
+    else:
+        # Heuristic: if description exists, derive simple categories
+        desc_col = next((c for c in ['description','narration','particulars','details'] if c in norm_df.columns), None)
+        if desc_col:
+            def derive(desc: str):
+                d = str(desc).lower()
+                if any(k in d for k in ['salary','payroll']): return 'Salary'
+                if any(k in d for k in ['rent']): return 'Rent'
+                if any(k in d for k in ['fuel','uber','ola']): return 'Transport'
+                if any(k in d for k in ['grocery','supermarket','mart']): return 'Groceries'
+                if any(k in d for k in ['emi','loan']): return 'EMI'
+                return 'General'
+            norm_df['category'] = norm_df[desc_col].apply(derive)
+        else:
+            norm_df['category'] = 'General'
+
+    # Keep only required columns
+    keep_cols = ['date','amount','type','category']
+    optional_cols = [c for c in ['description','narration','particulars','details'] if c in norm_df.columns]
+    keep_cols.extend(optional_cols)
+    norm_df = norm_df[keep_cols].reset_index(drop=True)
+    return norm_df
+
+def parse_capital_gains_file(file_path: str) -> pd.DataFrame:
+    """Parse capital gains CSV to DataFrame with columns: date, gain_amount.
+    Supports various column name variants (gain_loss, capital_gain, profit_loss)."""
+    if not os.path.exists(file_path):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(file_path)
+    except UnicodeDecodeError:
+        df = pd.read_csv(file_path, encoding='iso-8859-1')
+    except Exception:
+        return pd.DataFrame()
+    if df.empty:
+        return df
+    df = _standardize_columns(df)
+    # Date column candidates
+    date_col = next((c for c in ['date','trade_date','transaction_date','sell_date'] if c in df.columns), None)
+    if not date_col:
+        return pd.DataFrame()
+    df['date'] = pd.to_datetime(df[date_col], errors='coerce')
+    df = df.dropna(subset=['date'])
+    gain_col = next((c for c in ['gain_amount','gain_loss','capital_gain','profit_loss','gain'] if c in df.columns), None)
+    if not gain_col:
+        return pd.DataFrame()
+    df['gain_amount'] = pd.to_numeric(df[gain_col], errors='coerce').fillna(0)
+    return df[['date','gain_amount']].reset_index(drop=True)

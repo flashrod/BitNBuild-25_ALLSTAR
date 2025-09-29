@@ -1,29 +1,28 @@
 import React from "react";
 import {
-  ChartBarIcon,
-  DocumentTextIcon,
-  CalculatorIcon,
-  CreditCardIcon,
-  BanknotesIcon,
-  ShieldCheckIcon,
-  UserCircleIcon,
-  QuestionMarkCircleIcon,
-  ArrowRightCircleIcon,
-  StarIcon,
-  AcademicCapIcon,
+  AcademicCapIcon, // Dashboard
+  ShieldCheckIcon, // Secure Vault
+  ArrowUpTrayIcon, // Upload Files
+  CalculatorIcon, // Tax Calculator
+  CreditCardIcon, // CIBIL Advisor
+  BanknotesIcon, // Debt Simulator
+  ChartBarIcon, // Capital Gains Analyzer
+  DocumentMagnifyingGlassIcon, // Reports
+  PresentationChartLineIcon, // Analytics
+  QuestionMarkCircleIcon, // Help & Support
+  ArrowRightCircleIcon, // Pro Features
 } from "@heroicons/react/24/outline";
 import { Link, useLocation } from "react-router-dom";
 
 const menuItems = [
-  { name: "Dashboard", icon: AcademicCapIcon, path: "/" },
-  { name: "Document Vault", icon: DocumentTextIcon, path: "/vault" },
-  { name: "Upload Files", icon: DocumentTextIcon, path: "/upload" },
+  { name: "Dashboard", icon: AcademicCapIcon, path: "/dashboard" },
+  { name: "Upload Files", icon: ArrowUpTrayIcon, path: "/upload" },
   { name: "Tax Calculator", icon: CalculatorIcon, path: "/tax" },
   { name: "CIBIL Advisor", icon: CreditCardIcon, path: "/cibil" },
   { name: "Debt Simulator", icon: BanknotesIcon, path: "/debt" },
-  { name: "Capital Gains Analyzer", icon: BanknotesIcon, path: "/capital-gains" },
-  { name: "Reports", icon: ShieldCheckIcon, path: "/reports" },
-  { name: "Analytics", icon: ChartBarIcon, path: "/analytics" },
+  { name: "Capital Gains Analyzer", icon: ChartBarIcon, path: "/capital-gains" },
+  { name: "Analysis", icon: PresentationChartLineIcon, path: "/analysis" },
+  { name: "Reports", icon: DocumentMagnifyingGlassIcon, path: "/reports" },
   { name: "Help & Support", icon: QuestionMarkCircleIcon, path: "/help" },
 ];
 

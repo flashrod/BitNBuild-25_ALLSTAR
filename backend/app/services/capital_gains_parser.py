@@ -197,3 +197,36 @@ class CapitalGainsParser:
     def _parse_cleartax(self, df):
         # TODO: Implement ClearTax-specific parsing
         return []
+
+
+# ----------------------------------------------------------------------------
+# Lightweight helper for reports/analysis endpoints wanting a simple DataFrame
+# ----------------------------------------------------------------------------
+def parse_capital_gains_file(file_path: str) -> pd.DataFrame:
+    """Parse a generic capital gains CSV into DataFrame with columns: date, gain_amount.
+    Recognizes common column variants for date and gain fields.
+    Returns empty DataFrame if file missing or unparsable.
+    """
+    import os
+    if not os.path.exists(file_path):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(file_path)
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv(file_path, encoding='iso-8859-1')
+        except Exception:
+            return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+    if df.empty:
+        return df
+    df.columns = [c.strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
+    date_col = next((c for c in ['date','trade_date','transaction_date','sell_date','buy_date'] if c in df.columns), None)
+    gain_col = next((c for c in ['gain_amount','gain_loss','capital_gain','profit_loss','gain'] if c in df.columns), None)
+    if not date_col or not gain_col:
+        return pd.DataFrame()
+    df['date'] = pd.to_datetime(df[date_col], errors='coerce')
+    df = df.dropna(subset=['date'])
+    df['gain_amount'] = pd.to_numeric(df[gain_col], errors='coerce').fillna(0)
+    return df[['date','gain_amount']].reset_index(drop=True)

@@ -13,7 +13,8 @@ import DebtDashboard from './pages/DebtDashboard';
 import CapitalGainsAnalyzer from './pages/CapitalGainsAnalyzer.jsx';
 import HelpSupport from './pages/HelpSupport.jsx';
 import Landing from './pages/Landing';
-import DocumentVault from './pages/DocumentVault';
+import Analysis from './pages/Analysis.jsx';
+import Reports from './pages/Reports.jsx';
 
 // Import components
 import MainLayout from './components/MainLayout';
@@ -33,8 +34,9 @@ function App() {
         <Route path="/cibil" element={<CIBILAdvisor />} />
         <Route path="/debt" element={<DebtDashboard />} />
         <Route path="/capital-gains" element={<CapitalGainsAnalyzer />} />
+        <Route path="/analysis" element={<Analysis user={currentUser} />} />
+        <Route path="/reports" element={<Reports user={currentUser} />} />
         <Route path="/help" element={<HelpSupport />} />
-        <Route path="/vault" element={<DocumentVault />} />
       </Route>
       <Route path="/" element={<Navigate to="/landing" />} />
       <Route path="*" element={<Navigate to="/landing" />} />
